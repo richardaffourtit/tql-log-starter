@@ -23,6 +23,17 @@ import { activeReadout } from './theory';
 import { detectPitchesFromFft, smoothPitches } from './audioAnalyze';
 import { cutsFromBpm, detectOnsets, type AutocutMode } from './autocut';
 import { fetchArchiveItem, parseArchiveUrl, type VideoSource } from '../../lib/sourceLibrary';
+import {
+    PLATFORMS,
+    buildCaptionPack,
+    buildDeployPath,
+    buildFilename,
+    buildSidecarJson,
+    formatCaption,
+    newMetadata,
+    type ClipMetadata,
+    type Platform
+} from '../../lib/metadata';
 
 interface Layout {
     bgA: string;
@@ -136,6 +147,16 @@ export default function Studio() {
     const [archiveUrl, setArchiveUrl] = useState('');
     const [archiveSource, setArchiveSource] = useState<VideoSource | null>(null);
     const [archiveStatus, setArchiveStatus] = useState<string | null>(null);
+    const [deploy, setDeploy] = useState({
+        project: 'untitled',
+        variant: 'main',
+        platform: 'tiktok' as Platform,
+        caption: '',
+        hashtags: '',
+        credits: ''
+    });
+    const [lastMeta, setLastMeta] = useState<ClipMetadata | null>(null);
+    const [sidecarUrl, setSidecarUrl] = useState<string | null>(null);
 
     useEffect(() => {
         const buf = audio.state.buffer;
@@ -346,6 +367,47 @@ export default function Studio() {
         rec.onstop = () => {
             const blob = new Blob(recordedChunks.current, { type: 'video/webm' });
             setDownloadUrl(URL.createObjectURL(blob));
+            const refCueForMeta = useAlignment ? refCue : null;
+            const meta = newMetadata({
+                project: deploy.project,
+                variant: deploy.variant,
+                platform: deploy.platform,
+                cueAlignment: refCueForMeta
+                    ? {
+                          refCueName: refCueForMeta.name,
+                          refCueTime: refCueForMeta.time,
+                          alignTargetTime
+                      }
+                    : undefined,
+                tempo: {
+                    audioBpm: layout.audioBpm,
+                    detectedBpm: score.state.detectedBpm,
+                    syncOffset: layout.syncOffset
+                },
+                duration: totalOut,
+                preRoll,
+                sourceStart,
+                title: layout.title || undefined,
+                subtitle: layout.subtitle || undefined,
+                caption: deploy.caption || undefined,
+                hashtags: deploy.hashtags
+                    .split(/[\s,]+/)
+                    .map((s) => s.replace(/^#/, ''))
+                    .filter(Boolean),
+                credits: deploy.credits
+                    .split(/[\n,]+/)
+                    .map((s) => s.trim())
+                    .filter(Boolean),
+                sourceFiles: {
+                    audio: audio.state.file?.name,
+                    score: score.state.fileName ?? undefined,
+                    archiveId: archiveSource?.id
+                },
+                cutMarkers: cutMarkers.length ? cutMarkers : undefined
+            });
+            setLastMeta(meta);
+            const jsonBlob = new Blob([buildSidecarJson(meta)], { type: 'application/json' });
+            setSidecarUrl(URL.createObjectURL(jsonBlob));
         };
 
         audio.pause();
@@ -510,9 +572,38 @@ export default function Studio() {
                     />
                 )}
                 {downloadUrl && (
-                    <a className="btn" href={downloadUrl} download="music-content.webm">
-                        Download WebM
-                    </a>
+                    <div className="flex flex-col gap-2 items-center">
+                        <a
+                            className="btn"
+                            href={downloadUrl}
+                            download={lastMeta ? buildFilename(lastMeta) : 'music-content.webm'}
+                        >
+                            Download WebM
+                        </a>
+                        {lastMeta && sidecarUrl && (
+                            <>
+                                <a
+                                    className="btn"
+                                    href={sidecarUrl}
+                                    download={buildFilename(lastMeta, 'json')}
+                                >
+                                    Download sidecar JSON
+                                </a>
+                                <code className="text-[10px] opacity-60 break-all max-w-[320px]">
+                                    {buildDeployPath(lastMeta)}
+                                </code>
+                                <button
+                                    className="btn"
+                                    onClick={() => {
+                                        const pack = buildCaptionPack(lastMeta);
+                                        navigator.clipboard.writeText(formatCaption(pack));
+                                    }}
+                                >
+                                    Copy caption pack
+                                </button>
+                            </>
+                        )}
+                    </div>
                 )}
             </div>
 
@@ -1042,6 +1133,77 @@ export default function Studio() {
                             </div>
                         </div>
                     )}
+                </Panel>
+
+                <Panel title="3f. Deploy metadata">
+                    <p className="text-xs opacity-70">
+                        Every export ships with a sidecar JSON + deploy-path so variants stay organized
+                        across platforms. Filename = <code>{'{project}_{platform}_{variant}_{stamp}.webm'}</code>.
+                    </p>
+                    <Row>
+                        <Field label="Project">
+                            <input
+                                className="inp"
+                                value={deploy.project}
+                                onChange={(e) => setDeploy((d) => ({ ...d, project: e.target.value }))}
+                            />
+                        </Field>
+                        <Field label="Variant">
+                            <input
+                                className="inp"
+                                value={deploy.variant}
+                                onChange={(e) => setDeploy((d) => ({ ...d, variant: e.target.value }))}
+                                placeholder="main, hook, loop-a…"
+                            />
+                        </Field>
+                        <Field label="Platform">
+                            <select
+                                className="inp"
+                                value={deploy.platform}
+                                onChange={(e) =>
+                                    setDeploy((d) => ({ ...d, platform: e.target.value as Platform }))
+                                }
+                            >
+                                {PLATFORMS.map((p) => (
+                                    <option key={p.id} value={p.id}>
+                                        {p.label} · {p.aspect} · {p.maxDurationSec}s
+                                    </option>
+                                ))}
+                            </select>
+                        </Field>
+                    </Row>
+                    <Row>
+                        <Field label="Caption">
+                            <textarea
+                                className="inp"
+                                rows={2}
+                                value={deploy.caption}
+                                onChange={(e) => setDeploy((d) => ({ ...d, caption: e.target.value }))}
+                            />
+                        </Field>
+                        <Field label="Hashtags (comma or space)">
+                            <input
+                                className="inp"
+                                value={deploy.hashtags}
+                                onChange={(e) => setDeploy((d) => ({ ...d, hashtags: e.target.value }))}
+                                placeholder="glitch, monoVoice, contentmint"
+                            />
+                        </Field>
+                        <Field label="Credits (newline or comma)">
+                            <input
+                                className="inp"
+                                value={deploy.credits}
+                                onChange={(e) => setDeploy((d) => ({ ...d, credits: e.target.value }))}
+                                placeholder="prod. g00dweird · mix by …"
+                            />
+                        </Field>
+                    </Row>
+                    <p className="text-xs opacity-60">
+                        {(() => {
+                            const p = PLATFORMS.find((x) => x.id === deploy.platform);
+                            return p ? p.notes : '';
+                        })()}
+                    </p>
                 </Panel>
 
                 <Panel title="4. Score strip">
