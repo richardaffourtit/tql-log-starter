@@ -5,12 +5,14 @@ import {
     CANVAS_H,
     CANVAS_W,
     applyGlitch,
+    applyTileMosh,
     drawBackground,
     drawPianoRoll,
     drawScoreStrip,
     drawSpectrum,
     drawTitle,
-    drawWaveform
+    drawWaveform,
+    drawWordmark
 } from './modules';
 import type { RenderCtx } from './modules';
 
@@ -20,6 +22,12 @@ interface Layout {
     bgAngle: number;
     title: string;
     subtitle: string;
+    titleColor: string;
+    showWordmark: boolean;
+    wordmarkVariant: 'brand' | 'white';
+    wordmarkSize: number;
+    wordmarkY: number;
+    byline: string;
     scoreScrollSpeed: number;
     scoreOffset: number;
     scoreY: number;
@@ -30,32 +38,42 @@ interface Layout {
     waveformColor: string;
     pianoRollWindow: number;
     glitch: number;
+    tileMosh: number;
     showWaveform: boolean;
     showSpectrum: boolean;
     showScore: boolean;
     showPianoRoll: boolean;
+    showTitle: boolean;
 }
 
 const DEFAULT_LAYOUT: Layout = {
-    bgA: '#101828',
-    bgB: '#355c7d',
+    bgA: '#e46ca0',
+    bgB: '#8fc9a0',
     bgAngle: 135,
-    title: 'Untitled',
+    title: '',
     subtitle: '',
+    titleColor: '#ffffff',
+    showWordmark: true,
+    wordmarkVariant: 'white',
+    wordmarkSize: 120,
+    wordmarkY: 260,
+    byline: 'by g00dweird',
     scoreScrollSpeed: 260,
     scoreOffset: 0,
-    scoreY: 420,
+    scoreY: 520,
     scoreH: 360,
     spectrumY: 1500,
     spectrumH: 360,
-    spectrumColor: '#f67280',
+    spectrumColor: '#7b2bff',
     waveformColor: '#ffffff',
     pianoRollWindow: 6,
     glitch: 0,
+    tileMosh: 0,
     showWaveform: true,
     showSpectrum: true,
     showScore: true,
-    showPianoRoll: true
+    showPianoRoll: true,
+    showTitle: false
 };
 
 export default function Studio() {
@@ -96,7 +114,21 @@ export default function Studio() {
             };
 
             drawBackground(rc, { a: layout.bgA, b: layout.bgB, angle: layout.bgAngle });
-            drawTitle(rc, { title: layout.title, subtitle: layout.subtitle });
+            if (layout.showTitle && layout.title) {
+                drawTitle(rc, {
+                    title: layout.title,
+                    subtitle: layout.subtitle,
+                    color: layout.titleColor
+                });
+            }
+            if (layout.showWordmark) {
+                drawWordmark(rc, {
+                    y: layout.wordmarkY,
+                    size: layout.wordmarkSize,
+                    variant: layout.wordmarkVariant,
+                    byline: layout.byline
+                });
+            }
 
             if (layout.showScore && score.scoreImage && score.scoreImageSize) {
                 drawScoreStrip(rc, {
@@ -133,6 +165,9 @@ export default function Studio() {
 
             if (layout.glitch > 0) {
                 applyGlitch(ctx, layout.glitch, audio.state.currentTime);
+            }
+            if (layout.tileMosh > 0) {
+                applyTileMosh(ctx, layout.tileMosh, audio.state.currentTime);
             }
 
             rafRef.current = requestAnimationFrame(tick);
@@ -260,6 +295,57 @@ export default function Studio() {
                 </Panel>
 
                 <Panel title="3. Layout">
+                    <Toggle
+                        label="Show contentmint wordmark"
+                        checked={layout.showWordmark}
+                        onChange={(v) => update('showWordmark', v)}
+                    />
+                    <Row>
+                        <Field label="Wordmark style">
+                            <select
+                                className="inp"
+                                value={layout.wordmarkVariant}
+                                onChange={(e) =>
+                                    update('wordmarkVariant', e.target.value as 'brand' | 'white')
+                                }
+                            >
+                                <option value="white">White (over gradient)</option>
+                                <option value="brand">Brand (black + purple)</option>
+                            </select>
+                        </Field>
+                        <Field label={`Size (${layout.wordmarkSize})`}>
+                            <input
+                                type="range"
+                                min={60}
+                                max={220}
+                                value={layout.wordmarkSize}
+                                onChange={(e) => update('wordmarkSize', parseInt(e.target.value))}
+                            />
+                        </Field>
+                        <Field label={`Y (${layout.wordmarkY})`}>
+                            <input
+                                type="range"
+                                min={80}
+                                max={CANVAS_H - 200}
+                                value={layout.wordmarkY}
+                                onChange={(e) => update('wordmarkY', parseInt(e.target.value))}
+                            />
+                        </Field>
+                    </Row>
+                    <Row>
+                        <Field label="Byline">
+                            <input
+                                className="inp"
+                                value={layout.byline}
+                                onChange={(e) => update('byline', e.target.value)}
+                            />
+                        </Field>
+                    </Row>
+                    <Toggle
+                        label="Custom title"
+                        checked={layout.showTitle}
+                        onChange={(v) => update('showTitle', v)}
+                    />
                     <Row>
                         <Field label="Title">
                             <input
@@ -273,6 +359,13 @@ export default function Studio() {
                                 className="inp"
                                 value={layout.subtitle}
                                 onChange={(e) => update('subtitle', e.target.value)}
+                            />
+                        </Field>
+                        <Field label="Title color">
+                            <input
+                                type="color"
+                                value={layout.titleColor}
+                                onChange={(e) => update('titleColor', e.target.value)}
                             />
                         </Field>
                     </Row>
@@ -300,6 +393,36 @@ export default function Studio() {
                                 onChange={(e) => update('bgAngle', parseInt(e.target.value))}
                             />
                         </Field>
+                    </Row>
+                    <Row>
+                        <button
+                            className="btn"
+                            onClick={() => {
+                                update('bgA', '#e46ca0');
+                                update('bgB', '#8fc9a0');
+                                update('bgAngle', 135);
+                            }}
+                        >
+                            Pink → Green
+                        </button>
+                        <button
+                            className="btn"
+                            onClick={() => {
+                                update('bgA', '#ffffff');
+                                update('bgB', '#ffffff');
+                            }}
+                        >
+                            White
+                        </button>
+                        <button
+                            className="btn"
+                            onClick={() => {
+                                update('bgA', '#0b0b0b');
+                                update('bgB', '#1a1a1a');
+                            }}
+                        >
+                            Black
+                        </button>
                     </Row>
                 </Panel>
 
@@ -417,7 +540,7 @@ export default function Studio() {
                 </Panel>
 
                 <Panel title="6. Glitch / moshing">
-                    <Field label={`Strength (${layout.glitch.toFixed(2)})`}>
+                    <Field label={`RGB-shift slices (${layout.glitch.toFixed(2)})`}>
                         <input
                             type="range"
                             min={0}
@@ -427,9 +550,19 @@ export default function Studio() {
                             onChange={(e) => update('glitch', parseFloat(e.target.value))}
                         />
                     </Field>
+                    <Field label={`Tile mosh (${layout.tileMosh.toFixed(2)})`}>
+                        <input
+                            type="range"
+                            min={0}
+                            max={1}
+                            step={0.01}
+                            value={layout.tileMosh}
+                            onChange={(e) => update('tileMosh', parseFloat(e.target.value))}
+                        />
+                    </Field>
                     <p className="text-xs opacity-60">
-                        Applies RGB-shift slices, feedback blending, and scanlines each frame. Heavy values
-                        reduce framerate.
+                        Tile mosh chops the frame into a grid and displaces random cells with RGB bleed —
+                        matches the g00dweird glitch-grid look. Heavy values reduce framerate.
                     </p>
                 </Panel>
             </div>

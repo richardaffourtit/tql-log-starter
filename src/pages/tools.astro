@@ -3,11 +3,24 @@ import Layout from '../layouts/Layout.astro';
 import Studio from '../components/studio/Studio.tsx';
 ---
 
-<Layout title="Music Content Tools">
-    <h1 class="mb-6">Music Content Studio</h1>
+<Layout title="contentmint — by g00dweird">
+    <div class="flex items-end justify-between flex-wrap gap-4 mb-2">
+        <h1 class="tracking-tight text-5xl sm:text-6xl font-extrabold">
+            <span class="text-white">content</span><span class="cm-mint">mint</span>
+        </h1>
+        <span class="opacity-70 text-sm">by g00dweird</span>
+    </div>
     <p class="mb-8 text-lg opacity-80">
-        Upload audio plus a score (MIDI, MusicXML, or GuitarPro). Arrange tab, staff notation, a spectrum
-        visualizer, and glitch effects onto a 9:16 canvas and export to video.
+        Turn a track plus a score (MIDI, MusicXML, or GuitarPro) into a 9:16 video. Staff/tab, spectrum,
+        waveform, wordmark, and tile-mosh — arranged on the canvas and exported to WebM.
     </p>
     <Studio client:only="react" />
+    <style>
+        .cm-mint {
+            background: linear-gradient(90deg, #7b2bff 0%, #a855f7 100%);
+            -webkit-background-clip: text;
+            background-clip: text;
+            color: transparent;
+        }
+    </style>
 </Layout>

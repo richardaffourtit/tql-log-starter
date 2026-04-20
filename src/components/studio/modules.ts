@@ -168,21 +168,68 @@ export function drawPianoRoll(rc: RenderCtx, opts: PianoRollOpts) {
 export interface TitleOpts {
     title: string;
     subtitle?: string;
+    color?: string;
 }
 
 export function drawTitle(rc: RenderCtx, opts: TitleOpts) {
     const { ctx } = rc;
     ctx.save();
     ctx.textAlign = 'center';
-    ctx.fillStyle = '#ffffff';
-    ctx.shadowColor = 'rgba(0,0,0,0.6)';
-    ctx.shadowBlur = 10;
+    ctx.fillStyle = opts.color || '#ffffff';
+    ctx.shadowColor = 'rgba(0,0,0,0.35)';
+    ctx.shadowBlur = 12;
     ctx.font = '700 72px Inter, sans-serif';
     ctx.fillText(opts.title, CANVAS_W / 2, 180);
     if (opts.subtitle) {
         ctx.font = '500 36px Inter, sans-serif';
         ctx.globalAlpha = 0.85;
         ctx.fillText(opts.subtitle, CANVAS_W / 2, 240);
+    }
+    ctx.restore();
+}
+
+export interface WordmarkOpts {
+    y: number;
+    size: number;
+    variant: 'brand' | 'white';
+    byline?: string;
+}
+
+export function drawWordmark(rc: RenderCtx, opts: WordmarkOpts) {
+    const { ctx } = rc;
+    const { y, size, variant, byline } = opts;
+    ctx.save();
+    ctx.font = `800 ${size}px Inter, sans-serif`;
+    ctx.textBaseline = 'alphabetic';
+
+    const content = 'content';
+    const mint = 'mint';
+    const contentW = ctx.measureText(content).width;
+    const mintW = ctx.measureText(mint).width;
+    const totalW = contentW + mintW;
+    const startX = (CANVAS_W - totalW) / 2;
+
+    if (variant === 'brand') {
+        ctx.fillStyle = '#0b0b0b';
+        ctx.fillText(content, startX, y);
+        const grad = ctx.createLinearGradient(startX + contentW, 0, startX + totalW, 0);
+        grad.addColorStop(0, '#7b2bff');
+        grad.addColorStop(1, '#a855f7');
+        ctx.fillStyle = grad;
+        ctx.fillText(mint, startX + contentW, y);
+    } else {
+        ctx.fillStyle = '#ffffff';
+        ctx.shadowColor = 'rgba(0,0,0,0.25)';
+        ctx.shadowBlur = 18;
+        ctx.fillText(content + mint, (CANVAS_W - ctx.measureText(content + mint).width) / 2, y);
+    }
+
+    if (byline) {
+        ctx.shadowBlur = 0;
+        ctx.font = `500 ${Math.round(size * 0.26)}px Inter, sans-serif`;
+        ctx.fillStyle = variant === 'brand' ? 'rgba(11,11,11,0.7)' : 'rgba(255,255,255,0.85)';
+        const bW = ctx.measureText(byline).width;
+        ctx.fillText(byline, (CANVAS_W - bW) / 2, y + size * 0.35);
     }
     ctx.restore();
 }
@@ -219,5 +266,46 @@ export function applyGlitch(ctx: CanvasRenderingContext2D, strength: number, tim
     for (let i = 0; i < snap.height; i += 3) {
         ctx.fillRect(0, i, snap.width, 1);
     }
+    ctx.restore();
+}
+
+export function applyTileMosh(ctx: CanvasRenderingContext2D, strength: number, time: number) {
+    if (strength <= 0) return;
+    const s = Math.min(1, strength);
+    const snap = ctx.canvas;
+    const off = document.createElement('canvas');
+    off.width = snap.width;
+    off.height = snap.height;
+    const octx = off.getContext('2d')!;
+    octx.drawImage(snap, 0, 0);
+
+    const cols = 18;
+    const rows = 32;
+    const tw = snap.width / cols;
+    const th = snap.height / rows;
+    const seed = Math.floor(time * 6);
+    const rand = (i: number) => {
+        const x = Math.sin((i + seed) * 12.9898) * 43758.5453;
+        return x - Math.floor(x);
+    };
+
+    ctx.save();
+    for (let r = 0; r < rows; r++) {
+        for (let c = 0; c < cols; c++) {
+            const idx = r * cols + c;
+            if (rand(idx) > 1 - s * 0.5) {
+                const dx = (rand(idx + 7) - 0.5) * 120 * s;
+                const dy = (rand(idx + 13) - 0.5) * 40 * s;
+                ctx.drawImage(off, c * tw, r * th, tw, th, c * tw + dx, r * th + dy, tw, th);
+            }
+        }
+    }
+    ctx.globalCompositeOperation = 'screen';
+    ctx.globalAlpha = 0.5 * s;
+    ctx.drawImage(off, 6 * s, 0);
+    ctx.fillStyle = '#ff0040';
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.globalAlpha = 0.15 * s;
+    ctx.drawImage(off, -6 * s, 0);
     ctx.restore();
 }
