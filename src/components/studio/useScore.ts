@@ -12,12 +12,21 @@ export interface MidiNoteEvent {
     track: number;
 }
 
+export interface RawNote {
+    time: number;
+    duration: number;
+    pitch: number;
+    velocity: number;
+}
+
 export interface ScoreState {
     kind: ScoreKind | null;
     fileName: string | null;
     midi: Midi | null;
     notes: MidiNoteEvent[];
+    rawNotes: RawNote[];
     midiDuration: number;
+    detectedBpm: number;
     ready: boolean;
     error: string | null;
 }
@@ -27,7 +36,9 @@ const INITIAL: ScoreState = {
     fileName: null,
     midi: null,
     notes: [],
+    rawNotes: [],
     midiDuration: 0,
+    detectedBpm: 120,
     ready: false,
     error: null
 };
@@ -141,6 +152,7 @@ export function useScore(): UseScore {
                 const buf = await file.arrayBuffer();
                 const midi = new Midi(buf);
                 const notes: MidiNoteEvent[] = [];
+                const rawNotes: RawNote[] = [];
                 midi.tracks.forEach((t, ti) => {
                     t.notes.forEach((n) => {
                         notes.push({
@@ -150,15 +162,25 @@ export function useScore(): UseScore {
                             velocity: n.velocity,
                             track: ti
                         });
+                        rawNotes.push({
+                            time: n.time,
+                            duration: n.duration,
+                            pitch: n.midi,
+                            velocity: n.velocity
+                        });
                     });
                 });
                 notes.sort((a, b) => a.time - b.time);
+                rawNotes.sort((a, b) => a.time - b.time);
+                const detectedBpm = Math.round(midi.header.tempos[0]?.bpm ?? 120);
                 setState({
                     kind: 'midi',
                     fileName: file.name,
                     midi,
                     notes,
+                    rawNotes,
                     midiDuration: midi.duration,
+                    detectedBpm,
                     ready: true,
                     error: null
                 });

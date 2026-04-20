@@ -44,6 +44,9 @@ interface Layout {
     showScore: boolean;
     showPianoRoll: boolean;
     showTitle: boolean;
+    audioBpm: number;
+    syncOffset: number;
+    autoFollowScrollSpeed: boolean;
 }
 
 const DEFAULT_LAYOUT: Layout = {
@@ -73,7 +76,10 @@ const DEFAULT_LAYOUT: Layout = {
     showSpectrum: true,
     showScore: true,
     showPianoRoll: true,
-    showTitle: false
+    showTitle: false,
+    audioBpm: 120,
+    syncOffset: 0,
+    autoFollowScrollSpeed: true
 };
 
 export default function Studio() {
@@ -88,6 +94,13 @@ export default function Studio() {
     const recorderRef = useRef<MediaRecorder | null>(null);
     const recordedChunks = useRef<Blob[]>([]);
     const [downloadUrl, setDownloadUrl] = useState<string | null>(null);
+    const tapTimesRef = useRef<number[]>([]);
+
+    useEffect(() => {
+        if (score.state.detectedBpm && score.state.kind === 'midi') {
+            setLayout((s) => ({ ...s, audioBpm: score.state.detectedBpm }));
+        }
+    }, [score.state.detectedBpm, score.state.kind]);
 
     useEffect(() => {
         const canvas = canvasRef.current;
@@ -130,15 +143,22 @@ export default function Studio() {
                 });
             }
 
+            const midiBpm = score.state.detectedBpm || 120;
+            const tempoScale = midiBpm / (layout.audioBpm || midiBpm);
+            const syncedTime = (audio.state.currentTime - layout.syncOffset) / tempoScale;
+
             if (layout.showScore && score.scoreImage && score.scoreImageSize) {
+                const effectiveScroll = layout.autoFollowScrollSpeed
+                    ? layout.scoreScrollSpeed / tempoScale
+                    : layout.scoreScrollSpeed;
                 drawScoreStrip(rc, {
                     image: score.scoreImage,
                     imageW: score.scoreImageSize.w,
                     imageH: score.scoreImageSize.h,
                     y0: layout.scoreY,
                     h: layout.scoreH,
-                    time: audio.state.currentTime,
-                    scrollSpeed: layout.scoreScrollSpeed,
+                    time: audio.state.currentTime - layout.syncOffset,
+                    scrollSpeed: effectiveScroll,
                     offset: layout.scoreOffset,
                     showCursor: true
                 });
@@ -149,7 +169,7 @@ export default function Studio() {
                     notes: score.state.notes,
                     y0: layout.scoreY,
                     h: layout.scoreH,
-                    time: audio.state.currentTime,
+                    time: syncedTime,
                     window: layout.pianoRollWindow,
                     color: '#4ade80'
                 });
@@ -174,7 +194,24 @@ export default function Studio() {
         };
         rafRef.current = requestAnimationFrame(tick);
         return () => cancelAnimationFrame(rafRef.current);
-    }, [layout, audio.analyser, score.scoreImage, score.scoreImageSize, score.state.notes, score.state.kind, audio.state.currentTime]);
+    }, [layout, audio.analyser, score.scoreImage, score.scoreImageSize, score.state.notes, score.state.kind, score.state.detectedBpm, audio.state.currentTime]);
+
+    const handleTap = () => {
+        const now = performance.now();
+        const arr = tapTimesRef.current;
+        if (arr.length && now - arr[arr.length - 1] > 2500) arr.length = 0;
+        arr.push(now);
+        if (arr.length > 6) arr.shift();
+        if (arr.length >= 2) {
+            const intervals: number[] = [];
+            for (let i = 1; i < arr.length; i++) intervals.push(arr[i] - arr[i - 1]);
+            const avg = intervals.reduce((a, b) => a + b, 0) / intervals.length;
+            const bpm = Math.round(60000 / avg);
+            if (bpm > 30 && bpm < 300) update('audioBpm', bpm);
+        }
+    };
+    const resetTempo = () => update('audioBpm', score.state.detectedBpm || 120);
+    const syncNow = () => update('syncOffset', audio.state.currentTime);
 
     const handleAudio = (f: File) => audio.load(f);
     const handleScore = (f: File) => void score.load(f);
@@ -424,6 +461,87 @@ export default function Studio() {
                             Black
                         </button>
                     </Row>
+                </Panel>
+
+                <Panel title="3b. Time / tempo lock">
+                    <p className="text-xs opacity-70">
+                        MIDI detected: <strong>{score.state.detectedBpm || '—'} BPM</strong>
+                        {score.state.kind === 'midi' && score.state.notes.length
+                            ? ` · ${score.state.notes.length} notes`
+                            : ''}
+                    </p>
+                    <Row>
+                        <Field label={`Audio BPM (${layout.audioBpm})`}>
+                            <input
+                                type="range"
+                                min={40}
+                                max={240}
+                                step={0.5}
+                                value={layout.audioBpm}
+                                onChange={(e) => update('audioBpm', parseFloat(e.target.value))}
+                            />
+                        </Field>
+                        <Field label="Exact BPM">
+                            <input
+                                className="inp"
+                                type="number"
+                                min={40}
+                                max={240}
+                                step={0.1}
+                                value={layout.audioBpm}
+                                onChange={(e) => update('audioBpm', parseFloat(e.target.value) || 120)}
+                            />
+                        </Field>
+                        <Field label="Actions">
+                            <div className="flex gap-2">
+                                <button className="btn" onClick={handleTap}>
+                                    Tap tempo
+                                </button>
+                                <button className="btn" onClick={resetTempo}>
+                                    Reset
+                                </button>
+                            </div>
+                        </Field>
+                    </Row>
+                    <Row>
+                        <Field label={`Sync offset (${layout.syncOffset.toFixed(3)}s)`}>
+                            <input
+                                type="range"
+                                min={-10}
+                                max={10}
+                                step={0.001}
+                                value={layout.syncOffset}
+                                onChange={(e) => update('syncOffset', parseFloat(e.target.value))}
+                            />
+                        </Field>
+                        <Field label="Sync actions">
+                            <div className="flex gap-2">
+                                <button
+                                    className="btn"
+                                    onClick={syncNow}
+                                    disabled={!audio.state.url}
+                                    title="Align MIDI start to current audio position"
+                                >
+                                    Sync now
+                                </button>
+                                <button className="btn" onClick={() => update('syncOffset', 0)}>
+                                    Zero
+                                </button>
+                            </div>
+                        </Field>
+                        <Field label="Score strip">
+                            <Toggle
+                                label="Follow tempo"
+                                checked={layout.autoFollowScrollSpeed}
+                                onChange={(v) => update('autoFollowScrollSpeed', v)}
+                            />
+                        </Field>
+                    </Row>
+                    <p className="text-xs opacity-60">
+                        Tempo lock rescales MIDI note times by <code>detectedBPM ÷ audioBPM</code> so the
+                        piano roll and AlphaTab strip track the uploaded audio exactly. Use Tap Tempo on
+                        the audio downbeat, then Sync Now at bar 1 to lock position.
+                    </p>
                 </Panel>
 
                 <Panel title="4. Score strip">
