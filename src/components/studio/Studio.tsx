@@ -15,6 +15,7 @@ import {
     drawWordmark
 } from './modules';
 import type { RenderCtx } from './modules';
+import { detectSoundStart, makeCueId, type Cue } from './cues';
 
 interface Layout {
     bgA: string;
@@ -95,6 +96,35 @@ export default function Studio() {
     const recordedChunks = useRef<Blob[]>([]);
     const [downloadUrl, setDownloadUrl] = useState<string | null>(null);
     const tapTimesRef = useRef<number[]>([]);
+    const [cues, setCues] = useState<Cue[]>([]);
+    const [alignRefCueId, setAlignRefCueId] = useState<string | null>(null);
+    const [alignTargetTime, setAlignTargetTime] = useState(2);
+    const [exportDuration, setExportDuration] = useState(0);
+    const [alignEnabled, setAlignEnabled] = useState(false);
+    const recordTimerRef = useRef<number>(0);
+    const recordStartRef = useRef(0);
+    const recordPlanRef = useRef<{
+        exportStart: number;
+        preRoll: number;
+        sourceStart: number;
+        totalOut: number;
+        kicked: boolean;
+    } | null>(null);
+    const [recordTime, setRecordTime] = useState(0);
+
+    useEffect(() => {
+        const buf = audio.state.buffer;
+        if (!buf) return;
+        const t = detectSoundStart(buf);
+        setCues((list) => {
+            const filtered = list.filter((c) => c.id !== 'sound-start');
+            return [
+                ...filtered,
+                { id: 'sound-start', name: 'Sound start', time: t, color: '#7b2bff' }
+            ].sort((a, b) => a.time - b.time);
+        });
+        setAlignRefCueId((cur) => cur ?? 'sound-start');
+    }, [audio.state.buffer]);
 
     useEffect(() => {
         if (score.state.detectedBpm && score.state.kind === 'midi') {
@@ -145,7 +175,11 @@ export default function Studio() {
 
             const midiBpm = score.state.detectedBpm || 120;
             const tempoScale = midiBpm / (layout.audioBpm || midiBpm);
-            const syncedTime = (audio.state.currentTime - layout.syncOffset) / tempoScale;
+            const plan = recordPlanRef.current;
+            const sourceTime = plan
+                ? recordTime + plan.exportStart
+                : audio.state.currentTime;
+            const syncedTime = (sourceTime - layout.syncOffset) / tempoScale;
 
             if (layout.showScore && score.scoreImage && score.scoreImageSize) {
                 const effectiveScroll = layout.autoFollowScrollSpeed
@@ -157,7 +191,7 @@ export default function Studio() {
                     imageH: score.scoreImageSize.h,
                     y0: layout.scoreY,
                     h: layout.scoreH,
-                    time: audio.state.currentTime - layout.syncOffset,
+                    time: sourceTime - layout.syncOffset,
                     scrollSpeed: effectiveScroll,
                     offset: layout.scoreOffset,
                     showCursor: true
@@ -194,7 +228,7 @@ export default function Studio() {
         };
         rafRef.current = requestAnimationFrame(tick);
         return () => cancelAnimationFrame(rafRef.current);
-    }, [layout, audio.analyser, score.scoreImage, score.scoreImageSize, score.state.notes, score.state.kind, score.state.detectedBpm, audio.state.currentTime]);
+    }, [layout, audio.analyser, score.scoreImage, score.scoreImageSize, score.state.notes, score.state.kind, score.state.detectedBpm, audio.state.currentTime, recordTime]);
 
     const handleTap = () => {
         const now = performance.now();
@@ -216,8 +250,25 @@ export default function Studio() {
     const handleAudio = (f: File) => audio.load(f);
     const handleScore = (f: File) => void score.load(f);
 
+    const refCue = cues.find((c) => c.id === alignRefCueId) ?? null;
+    const useAlignment = alignEnabled && !!refCue;
+    const previewExportStart = useAlignment ? refCue!.time - alignTargetTime : 0;
+    const previewPreRoll = useAlignment && previewExportStart < 0 ? -previewExportStart : 0;
+    const previewTail =
+        useAlignment && exportDuration > 0
+            ? exportDuration
+            : Math.max(0, (audio.state.duration || 0) - Math.max(0, previewExportStart));
+
     const startRecord = () => {
         if (!canvasRef.current || !audio.destination) return;
+        const exportStart = useAlignment ? refCue!.time - alignTargetTime : 0;
+        const preRoll = useAlignment && exportStart < 0 ? -exportStart : 0;
+        const sourceStart = Math.max(0, exportStart);
+        const totalOut =
+            useAlignment && exportDuration > 0
+                ? exportDuration
+                : Math.max(0, (audio.state.duration || 0) - sourceStart);
+
         const canvasStream = canvasRef.current.captureStream(60);
         const audioTracks = audio.destination.stream.getAudioTracks();
         const combined = new MediaStream([...canvasStream.getVideoTracks(), ...audioTracks]);
@@ -234,21 +285,84 @@ export default function Studio() {
             const blob = new Blob(recordedChunks.current, { type: 'video/webm' });
             setDownloadUrl(URL.createObjectURL(blob));
         };
+
+        audio.pause();
+        audio.seek(sourceStart);
+        recordPlanRef.current = { exportStart, preRoll, sourceStart, totalOut, kicked: preRoll <= 0 };
+        recordStartRef.current = performance.now() / 1000;
+        setRecordTime(0);
         rec.start(250);
         recorderRef.current = rec;
         setRecording(true);
-        audio.seek(0);
-        audio.play();
+
+        if (preRoll <= 0) audio.play();
+
+        const loop = () => {
+            const plan = recordPlanRef.current;
+            if (!plan) return;
+            const elapsed = performance.now() / 1000 - recordStartRef.current;
+            setRecordTime(elapsed);
+            if (!plan.kicked && elapsed >= plan.preRoll) {
+                audio.play();
+                plan.kicked = true;
+            }
+            if (plan.totalOut > 0 && elapsed >= plan.totalOut) {
+                stopRecord();
+                return;
+            }
+            recordTimerRef.current = requestAnimationFrame(loop);
+        };
+        recordTimerRef.current = requestAnimationFrame(loop);
     };
 
     const stopRecord = () => {
+        cancelAnimationFrame(recordTimerRef.current);
         recorderRef.current?.stop();
         recorderRef.current = null;
+        recordPlanRef.current = null;
         setRecording(false);
+        setRecordTime(0);
         audio.pause();
     };
 
     const update = <K extends keyof Layout>(k: K, v: Layout[K]) => setLayout((s) => ({ ...s, [k]: v }));
+
+    const addCueAtPlayhead = () => {
+        const t = audio.state.currentTime;
+        setCues((list) =>
+            [
+                ...list,
+                {
+                    id: makeCueId(),
+                    name: `Cue ${list.length + 1}`,
+                    time: t,
+                    color: '#e46ca0'
+                }
+            ].sort((a, b) => a.time - b.time)
+        );
+    };
+    const removeCue = (id: string) => {
+        setCues((list) => list.filter((c) => c.id !== id));
+        if (alignRefCueId === id) setAlignRefCueId(null);
+    };
+    const renameCue = (id: string, name: string) => {
+        setCues((list) => list.map((c) => (c.id === id ? { ...c, name } : c)));
+    };
+    const retimeCue = (id: string, time: number) => {
+        setCues((list) =>
+            list.map((c) => (c.id === id ? { ...c, time } : c)).sort((a, b) => a.time - b.time)
+        );
+    };
+    const redetectSoundStart = () => {
+        const buf = audio.state.buffer;
+        if (!buf) return;
+        const t = detectSoundStart(buf);
+        setCues((list) =>
+            list
+                .map((c) => (c.id === 'sound-start' ? { ...c, time: t } : c))
+                .sort((a, b) => a.time - b.time)
+        );
+    };
 
     return (
         <div className="grid grid-cols-1 xl:grid-cols-[auto_1fr] gap-8">
@@ -541,6 +655,134 @@ export default function Studio() {
                         Tempo lock rescales MIDI note times by <code>detectedBPM ÷ audioBPM</code> so the
                         piano roll and AlphaTab strip track the uploaded audio exactly. Use Tap Tempo on
                         the audio downbeat, then Sync Now at bar 1 to lock position.
+                    </p>
+                </Panel>
+
+                <Panel title="3c. Cues & export alignment">
+                    <p className="text-xs opacity-70">
+                        Drop cues and pick one as the alignment reference. Every export lines that cue
+                        up to the same output timestamp, so multi-video posts cut cleanly on TikTok.
+                    </p>
+                    <Row>
+                        <Field label="Add cues">
+                            <div className="flex gap-2 flex-wrap">
+                                <button
+                                    className="btn"
+                                    onClick={addCueAtPlayhead}
+                                    disabled={!audio.state.url}
+                                >
+                                    Cue at playhead
+                                </button>
+                                <button
+                                    className="btn"
+                                    onClick={redetectSoundStart}
+                                    disabled={!audio.state.buffer}
+                                >
+                                    Re-detect sound start
+                                </button>
+                            </div>
+                        </Field>
+                    </Row>
+                    {cues.length === 0 && (
+                        <p className="text-xs opacity-60">
+                            No cues yet. Load audio to auto-detect the sound start.
+                        </p>
+                    )}
+                    <ul className="space-y-2">
+                        {cues.map((c) => (
+                            <li
+                                key={c.id}
+                                className="flex items-center gap-2 bg-white/5 rounded-md p-2"
+                            >
+                                <span
+                                    className="inline-block w-2.5 h-2.5 rounded-full shrink-0"
+                                    style={{ background: c.color }}
+                                />
+                                <input
+                                    className="inp flex-1"
+                                    value={c.name}
+                                    onChange={(e) => renameCue(c.id, e.target.value)}
+                                />
+                                <input
+                                    className="inp"
+                                    style={{ width: 100 }}
+                                    type="number"
+                                    step={0.001}
+                                    min={0}
+                                    value={c.time.toFixed(3)}
+                                    onChange={(e) => retimeCue(c.id, parseFloat(e.target.value) || 0)}
+                                />
+                                <button
+                                    className="btn"
+                                    onClick={() => audio.seek(c.time)}
+                                    title="Seek audio to this cue"
+                                >
+                                    ▶
+                                </button>
+                                <label className="flex items-center gap-1 text-xs">
+                                    <input
+                                        type="radio"
+                                        name="align-ref-cue"
+                                        checked={alignRefCueId === c.id}
+                                        onChange={() => setAlignRefCueId(c.id)}
+                                    />
+                                    ref
+                                </label>
+                                <button className="btn" onClick={() => removeCue(c.id)}>
+                                    ×
+                                </button>
+                            </li>
+                        ))}
+                    </ul>
+                    <div className="h-px bg-white/10 my-1" />
+                    <Toggle
+                        label="Align exports to reference cue"
+                        checked={alignEnabled}
+                        onChange={setAlignEnabled}
+                    />
+                    <Row>
+                        <Field label={`Cue hits output at (${alignTargetTime.toFixed(2)}s)`}>
+                            <input
+                                type="range"
+                                min={0}
+                                max={30}
+                                step={0.1}
+                                value={alignTargetTime}
+                                onChange={(e) => setAlignTargetTime(parseFloat(e.target.value))}
+                            />
+                        </Field>
+                        <Field label={`Total output length (${exportDuration.toFixed(1)}s)`}>
+                            <input
+                                type="range"
+                                min={0}
+                                max={120}
+                                step={0.5}
+                                value={exportDuration}
+                                onChange={(e) => setExportDuration(parseFloat(e.target.value))}
+                            />
+                        </Field>
+                        <Field label="Output length (exact)">
+                            <input
+                                className="inp"
+                                type="number"
+                                min={0}
+                                step={0.1}
+                                value={exportDuration}
+                                onChange={(e) =>
+                                    setExportDuration(parseFloat(e.target.value) || 0)
+                                }
+                            />
+                        </Field>
+                    </Row>
+                    <p className="text-xs opacity-70 font-mono">
+                        {useAlignment
+                            ? `pre-roll ${previewPreRoll.toFixed(2)}s · source start ${Math.max(0, previewExportStart).toFixed(2)}s · total ${previewTail.toFixed(2)}s`
+                            : 'Alignment off — exports use natural start.'}
+                    </p>
+                    <p className="text-xs opacity-60">
+                        If the cue sits before the target output time, the export pre-rolls with
+                        silence + background only so the cue lands at exactly {alignTargetTime.toFixed(2)}
+                        s in every render. Set output length to 0 for natural duration.
                     </p>
                 </Panel>
 

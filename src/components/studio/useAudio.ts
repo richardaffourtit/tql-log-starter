@@ -6,6 +6,7 @@ export interface AudioState {
     duration: number;
     currentTime: number;
     playing: boolean;
+    buffer: AudioBuffer | null;
 }
 
 export interface UseAudio {
@@ -25,7 +26,8 @@ export function useAudio(fftSize = 2048): UseAudio {
         url: null,
         duration: 0,
         currentTime: 0,
-        playing: false
+        playing: false,
+        buffer: null
     });
 
     const audioElRef = useRef<HTMLAudioElement | null>(null);
@@ -65,7 +67,19 @@ export function useAudio(fftSize = 2048): UseAudio {
             const el = ensureAudio();
             const url = URL.createObjectURL(file);
             el.src = url;
-            setState((s) => ({ ...s, file, url, currentTime: 0, playing: false, duration: 0 }));
+            setState((s) => ({
+                ...s,
+                file,
+                url,
+                currentTime: 0,
+                playing: false,
+                duration: 0,
+                buffer: null
+            }));
+            file.arrayBuffer()
+                .then((ab) => ctxRef.current!.decodeAudioData(ab.slice(0)))
+                .then((buffer) => setState((s) => ({ ...s, buffer })))
+                .catch(() => {});
         },
         [ensureAudio]
     );
