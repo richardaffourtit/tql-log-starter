@@ -7,9 +7,16 @@ import Footer from '../components/Footer.astro';
 
 interface Props {
     title: string;
+    bodyClass?: string;
+    mainClass?: string;
+    theme?: 'default' | 'light';
 }
 
-const { title } = Astro.props;
+const { title, bodyClass, mainClass, theme = 'default' } = Astro.props;
+const isLight = theme === 'light';
+const rootBody = bodyClass ?? (isLight ? 'antialiased text-[color:var(--color-ink)] bg-[color:var(--color-surface-soft)]' : 'antialiased text-white bg-complementary');
+const outerWrap = isLight ? 'flex flex-col min-h-screen px-6 sm:px-10' : 'flex flex-col min-h-screen px-6 bg-noise sm:px-12';
+const main = mainClass ?? 'grow';
 ---
 
 <!doctype html>
@@ -22,11 +29,11 @@ const { title } = Astro.props;
         <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
         <link rel="preload" as="font" type="font/woff2" href={interWoff2} crossorigin />
     </head>
-    <body class="antialiased text-white bg-complementary">
-        <div class="flex flex-col min-h-screen px-6 bg-noise sm:px-12">
-            <div class="flex flex-col w-full max-w-5xl mx-auto grow">
-                <Header />
-                <main class="grow"><slot /></main>
+    <body class={rootBody}>
+        <div class={outerWrap}>
+            <div class={`flex flex-col w-full ${isLight ? 'max-w-[1400px]' : 'max-w-5xl'} mx-auto grow`}>
+                <Header theme={theme} />
+                <main class={main}><slot /></main>
                 <Footer />
             </div>
         </div>
