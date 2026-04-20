@@ -12,10 +12,13 @@
   "dependencies": {
     "@astrojs/netlify": "^6.2.3",
     "@astrojs/react": "^4.2.1",
+    "@coderline/alphatab": "^1.8.2",
+    "@coderline/alphatab-vite": "^1.8.2",
     "@fontsource-variable/inter": "^5.2.5",
     "@netlify/blobs": "^8.2.0",
     "@netlify/functions": "^2.8.2",
     "@tailwindcss/vite": "^4.0.14",
+    "@tonejs/midi": "^2.0.28",
     "@types/react": "^18.2.79",
     "@types/react-dom": "^18.2.25",
     "astro": "^5.5.3",
@@ -28,7 +31,9 @@
     "unique-names-generator": "^4.7.1"
   },
   "devDependencies": {
+    "@astrojs/check": "^0.9.8",
     "@types/blobshape": "^1.0.3",
-    "@types/node": "^20.12.7"
+    "@types/node": "^20.12.7",
+    "typescript": "^5.9.3"
   }
 }

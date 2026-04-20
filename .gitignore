@@ -22,3 +22,6 @@ pnpm-debug.log*
 
 # Local Netlify folder
 .netlify
+
+# alphaTab generated font/soundfont assets
+public/alphatab/

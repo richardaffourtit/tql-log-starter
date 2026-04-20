@@ -1,0 +1,13 @@
+---
+import Layout from '../layouts/Layout.astro';
+import Studio from '../components/studio/Studio.tsx';
+---
+
+<Layout title="Music Content Tools">
+    <h1 class="mb-6">Music Content Studio</h1>
+    <p class="mb-8 text-lg opacity-80">
+        Upload audio plus a score (MIDI, MusicXML, or GuitarPro). Arrange tab, staff notation, a spectrum
+        visualizer, and glitch effects onto a 9:16 canvas and export to video.
+    </p>
+    <Studio client:only="react" />
+</Layout>
