@@ -38,6 +38,26 @@ export const TOOLS: ToolMeta[] = [
         status: 'stub',
         href: '/tools/volumetric',
         accent: '#8fc9a0'
+    },
+    {
+        slug: 'callout',
+        name: 'Callout',
+        tagline: 'Machine-vision overlays & annotation tags',
+        description:
+            'Tracks features in the source video (objects, faces, gear, lyrics) and drops CV-style callout boxes, crosshairs, and tagged data labels on top. Exports with chroma or alpha background so CapCut can key them onto your footage.',
+        status: 'stub',
+        href: '/tools/callout',
+        accent: '#00e0c0'
+    },
+    {
+        slug: 'lyrics',
+        name: 'Lyric Captions',
+        tagline: 'Timed word / phrase captions, text or Midjourney',
+        description:
+            'Paste lyrics (or drop an LRC), tap the beats to timestamp each word or phrase, and render as styled text captions or as a per-phrase Midjourney image sequence. Chroma or alpha export so CapCut can stack them onto any cut.',
+        status: 'stub',
+        href: '/tools/lyrics',
+        accent: '#ffd166'
     }
 ];
 

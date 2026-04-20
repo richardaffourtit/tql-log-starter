@@ -1,0 +1,49 @@
+---
+import Layout from '../../layouts/Layout.astro';
+import { TOOLS } from '../../lib/tools';
+
+const tool = TOOLS.find((t) => t.slug === 'callout')!;
+---
+
+<Layout title={`${tool.name} · contentmint`}>
+    <div class="flex items-end justify-between flex-wrap gap-4 mb-2">
+        <h1 class="tracking-tight text-4xl sm:text-5xl font-extrabold">
+            <span class="text-white">content</span><span class="cm-mint">mint</span>
+            <span class="opacity-60 font-normal text-2xl sm:text-3xl ml-3">/ {tool.name}</span>
+        </h1>
+        <span
+            class="text-xs uppercase tracking-widest px-2 py-1 rounded-md"
+            style={`background: ${tool.accent}33; color: ${tool.accent}; border: 1px solid ${tool.accent}66;`}
+            >{tool.status}</span
+        >
+    </div>
+    <p class="mb-8 text-lg opacity-80">{tool.tagline}</p>
+
+    <section class="rounded-xl p-6 bg-white/5 border border-white/10 space-y-4">
+        <h2 class="text-xl font-semibold">What this will do</h2>
+        <p class="opacity-80 leading-relaxed">{tool.description}</p>
+
+        <ul class="list-disc pl-6 opacity-80 space-y-1 text-sm">
+            <li>Upload a short video clip (or pull a frame from the Studio canvas)</li>
+            <li>Run per-frame object / face / text detection in the browser (ONNX / TFJS)</li>
+            <li>Drop CV-style boxes, crosshairs, scan-lines, and tagged data labels on tracked features</li>
+            <li>Animate the overlays with glitch / scan / sweep presets</li>
+            <li>Export as a 9:16 WebM with chroma or alpha background so CapCut can key it onto the original footage</li>
+        </ul>
+
+        <div class="mt-4 text-xs opacity-60">
+            Stub page — the detection pipeline and overlay renderer are still to build.
+        </div>
+    </section>
+
+    <a href="/tools" class="cm-btn cm-btn--ghost mt-6 inline-flex">← Back to Video Studio</a>
+
+    <style>
+        .cm-mint {
+            background: linear-gradient(90deg, #7b2bff 0%, #a855f7 100%);
+            -webkit-background-clip: text;
+            background-clip: text;
+            color: transparent;
+        }
+    </style>
+</Layout>

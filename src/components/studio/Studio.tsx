@@ -4,10 +4,12 @@ import { useScore } from './useScore';
 import {
     CANVAS_H,
     CANVAS_W,
+    activePitchesAt,
     applyGlitch,
     applyTileMosh,
     drawBackground,
     drawPianoRoll,
+    drawReadout,
     drawScoreStrip,
     drawSpectrum,
     drawTitle,
@@ -16,6 +18,8 @@ import {
 } from './modules';
 import type { RenderCtx } from './modules';
 import { detectSoundStart, makeCueId, type Cue } from './cues';
+import { activeReadout } from './theory';
+import { detectPitchesFromFft, smoothPitches } from './audioAnalyze';
 
 interface Layout {
     bgA: string;
@@ -48,6 +52,10 @@ interface Layout {
     audioBpm: number;
     syncOffset: number;
     autoFollowScrollSpeed: boolean;
+    colorizePianoRoll: boolean;
+    showReadout: boolean;
+    readoutY: number;
+    readoutSize: number;
 }
 
 const DEFAULT_LAYOUT: Layout = {
@@ -80,7 +88,11 @@ const DEFAULT_LAYOUT: Layout = {
     showTitle: false,
     audioBpm: 120,
     syncOffset: 0,
-    autoFollowScrollSpeed: true
+    autoFollowScrollSpeed: true,
+    colorizePianoRoll: true,
+    showReadout: true,
+    readoutY: 1180,
+    readoutSize: 120
 };
 
 export default function Studio() {
@@ -103,6 +115,8 @@ export default function Studio() {
     const [alignEnabled, setAlignEnabled] = useState(false);
     const recordTimerRef = useRef<number>(0);
     const recordStartRef = useRef(0);
+    const audioPitchesRef = useRef<number[]>([]);
+    const audioPitchAgeRef = useRef<Map<number, number>>(new Map());
     const recordPlanRef = useRef<{
         exportStart: number;
         preRoll: number;
@@ -205,8 +219,35 @@ export default function Studio() {
                     h: layout.scoreH,
                     time: syncedTime,
                     window: layout.pianoRollWindow,
-                    color: '#4ade80'
+                    color: '#4ade80',
+                    colorize: layout.colorizePianoRoll
                 });
+            }
+
+            if (layout.showReadout) {
+                let active: number[] = [];
+                if (score.state.kind === 'midi' && score.state.notes.length) {
+                    active = activePitchesAt(score.state.notes, syncedTime);
+                } else if (rc.freq && audio.analyser) {
+                    const sr = audio.analyser.context.sampleRate;
+                    const fftSize = audio.analyser.fftSize;
+                    const detected = detectPitchesFromFft(rc.freq, sr, fftSize).map((p) => p.midi);
+                    audioPitchesRef.current = smoothPitches(
+                        audioPitchesRef.current,
+                        detected,
+                        6,
+                        audioPitchAgeRef.current
+                    );
+                    active = audioPitchesRef.current;
+                }
+                if (active.length) {
+                    const readout = activeReadout(active);
+                    drawReadout(rc, {
+                        readout,
+                        y: layout.readoutY,
+                        size: layout.readoutSize
+                    });
+                }
             }
 
             if (layout.showSpectrum) {
@@ -848,6 +889,43 @@ export default function Studio() {
                             />
                         </Field>
                     </Row>
+                </Panel>
+
+                <Panel title="4b. Note / chord readout">
+                    <Toggle
+                        label="Pitch-class colored notes"
+                        checked={layout.colorizePianoRoll}
+                        onChange={(v) => update('colorizePianoRoll', v)}
+                    />
+                    <Toggle
+                        label="Show live NOTE / INTERVAL / CHORD readout"
+                        checked={layout.showReadout}
+                        onChange={(v) => update('showReadout', v)}
+                    />
+                    <Row>
+                        <Field label={`Readout Y (${layout.readoutY})`}>
+                            <input
+                                type="range"
+                                min={200}
+                                max={CANVAS_H - 260}
+                                value={layout.readoutY}
+                                onChange={(e) => update('readoutY', parseInt(e.target.value))}
+                            />
+                        </Field>
+                        <Field label={`Readout size (${layout.readoutSize})`}>
+                            <input
+                                type="range"
+                                min={60}
+                                max={200}
+                                value={layout.readoutSize}
+                                onChange={(e) => update('readoutSize', parseInt(e.target.value))}
+                            />
+                        </Field>
+                    </Row>
+                    <p className="text-xs opacity-60">
+                        Color follows the 12 chromatic pitch classes. Single note → NOTE, two pitches →
+                        INTERVAL, three+ → CHORD with slash-bass when inverted.
+                    </p>
                 </Panel>
 
                 <Panel title="5. Visualizer">

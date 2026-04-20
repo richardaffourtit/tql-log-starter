@@ -1,4 +1,5 @@
 import type { MidiNoteEvent } from './useScore';
+import { pitchColor, type Readout } from './theory';
 
 export const CANVAS_W = 1080;
 export const CANVAS_H = 1920;
@@ -112,11 +113,12 @@ export interface PianoRollOpts {
     minMidi?: number;
     maxMidi?: number;
     color: string;
+    colorize?: boolean;
 }
 
 export function drawPianoRoll(rc: RenderCtx, opts: PianoRollOpts) {
     const { ctx } = rc;
-    const { notes, y0, h, time, window, color } = opts;
+    const { notes, y0, h, time, window, color, colorize } = opts;
     let minMidi = opts.minMidi ?? 24;
     let maxMidi = opts.maxMidi ?? 96;
     if (!opts.minMidi || !opts.maxMidi) {
@@ -142,15 +144,17 @@ export function drawPianoRoll(rc: RenderCtx, opts: PianoRollOpts) {
     ctx.fillStyle = 'rgba(0,0,0,0.35)';
     ctx.fillRect(0, y0, CANVAS_W, h);
 
-    ctx.fillStyle = color;
-    ctx.shadowColor = color;
-    ctx.shadowBlur = 8;
     for (const n of notes) {
         const x = playhead + (n.time - time) * pxPerSec;
         const w = Math.max(2, n.duration * pxPerSec);
         if (x + w < 0 || x > CANVAS_W) continue;
         const yN = y0 + h - ((n.midi - minMidi) / range) * h;
         const noteH = Math.max(3, h / range - 1);
+        const active = time >= n.time && time < n.time + n.duration;
+        const fill = colorize ? pitchColor(n.midi, active ? 72 : 58) : color;
+        ctx.fillStyle = fill;
+        ctx.shadowColor = fill;
+        ctx.shadowBlur = active ? 14 : 6;
         ctx.globalAlpha = 0.5 + 0.5 * n.velocity;
         ctx.fillRect(x, yN - noteH / 2, w, noteH);
     }
@@ -163,6 +167,64 @@ export function drawPianoRoll(rc: RenderCtx, opts: PianoRollOpts) {
     ctx.lineTo(playhead, y0 + h);
     ctx.stroke();
     ctx.restore();
+}
+
+export interface ReadoutOpts {
+    readout: Readout;
+    y: number;
+    size?: number;
+}
+
+export function drawReadout(rc: RenderCtx, opts: ReadoutOpts) {
+    const { ctx } = rc;
+    const { readout, y } = opts;
+    const size = opts.size ?? 96;
+    const labelSize = Math.round(size * 0.34);
+    const padX = 36;
+    const padY = 22;
+
+    ctx.save();
+    ctx.font = `600 ${labelSize}px Inter, sans-serif`;
+    const labelW = ctx.measureText(readout.label).width;
+    ctx.font = `800 ${size}px Inter, sans-serif`;
+    const valueW = ctx.measureText(readout.value).width;
+    const boxW = Math.max(labelW + padX * 2, valueW + padX * 2);
+    const boxH = labelSize + size + padY * 2 + 8;
+    const x = (CANVAS_W - boxW) / 2;
+
+    ctx.fillStyle = 'rgba(0,0,0,0.55)';
+    ctx.strokeStyle = readout.color;
+    ctx.lineWidth = 4;
+    const r = 18;
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.arcTo(x + boxW, y, x + boxW, y + boxH, r);
+    ctx.arcTo(x + boxW, y + boxH, x, y + boxH, r);
+    ctx.arcTo(x, y + boxH, x, y, r);
+    ctx.arcTo(x, y, x + boxW, y, r);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+
+    ctx.textBaseline = 'top';
+    ctx.textAlign = 'center';
+    ctx.fillStyle = readout.color;
+    ctx.font = `600 ${labelSize}px Inter, sans-serif`;
+    ctx.fillText(readout.label, CANVAS_W / 2, y + padY);
+    ctx.fillStyle = '#ffffff';
+    ctx.shadowColor = readout.color;
+    ctx.shadowBlur = 22;
+    ctx.font = `800 ${size}px Inter, sans-serif`;
+    ctx.fillText(readout.value, CANVAS_W / 2, y + padY + labelSize + 8);
+    ctx.restore();
+}
+
+export function activePitchesAt(notes: MidiNoteEvent[], time: number): number[] {
+    const out: number[] = [];
+    for (const n of notes) {
+        if (time >= n.time && time < n.time + n.duration) out.push(n.midi);
+    }
+    return out;
 }
 
 export interface TitleOpts {
