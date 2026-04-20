@@ -8,6 +8,7 @@ import {
     applyGlitch,
     applyTileMosh,
     drawBackground,
+    drawCutMarkers,
     drawPianoRoll,
     drawReadout,
     drawScoreStrip,
@@ -20,6 +21,8 @@ import type { RenderCtx } from './modules';
 import { detectSoundStart, makeCueId, type Cue } from './cues';
 import { activeReadout } from './theory';
 import { detectPitchesFromFft, smoothPitches } from './audioAnalyze';
+import { cutsFromBpm, detectOnsets, type AutocutMode } from './autocut';
+import { fetchArchiveItem, parseArchiveUrl, type VideoSource } from '../../lib/sourceLibrary';
 
 interface Layout {
     bgA: string;
@@ -125,6 +128,14 @@ export default function Studio() {
         kicked: boolean;
     } | null>(null);
     const [recordTime, setRecordTime] = useState(0);
+    const [autocutMode, setAutocutMode] = useState<AutocutMode>('bpm');
+    const [autocutResolution, setAutocutResolution] = useState(0.5);
+    const [autocutBarsPerCut, setAutocutBarsPerCut] = useState(4);
+    const [cutMarkers, setCutMarkers] = useState<number[]>([]);
+    const [showCutMarkers, setShowCutMarkers] = useState(true);
+    const [archiveUrl, setArchiveUrl] = useState('');
+    const [archiveSource, setArchiveSource] = useState<VideoSource | null>(null);
+    const [archiveStatus, setArchiveStatus] = useState<string | null>(null);
 
     useEffect(() => {
         const buf = audio.state.buffer;
@@ -224,6 +235,16 @@ export default function Studio() {
                 });
             }
 
+            if (showCutMarkers && cutMarkers.length) {
+                drawCutMarkers(rc, {
+                    markers: cutMarkers,
+                    y0: layout.scoreY,
+                    h: layout.scoreH,
+                    time: sourceTime,
+                    window: layout.pianoRollWindow
+                });
+            }
+
             if (layout.showReadout) {
                 let active: number[] = [];
                 if (score.state.kind === 'midi' && score.state.notes.length) {
@@ -269,7 +290,7 @@ export default function Studio() {
         };
         rafRef.current = requestAnimationFrame(tick);
         return () => cancelAnimationFrame(rafRef.current);
-    }, [layout, audio.analyser, score.scoreImage, score.scoreImageSize, score.state.notes, score.state.kind, score.state.detectedBpm, audio.state.currentTime, recordTime]);
+    }, [layout, audio.analyser, score.scoreImage, score.scoreImageSize, score.state.notes, score.state.kind, score.state.detectedBpm, audio.state.currentTime, recordTime, cutMarkers, showCutMarkers]);
 
     const handleTap = () => {
         const now = performance.now();
@@ -403,6 +424,47 @@ export default function Studio() {
                 .map((c) => (c.id === 'sound-start' ? { ...c, time: t } : c))
                 .sort((a, b) => a.time - b.time)
         );
+    };
+
+    const generateAutocut = () => {
+        const duration = audio.state.duration || 0;
+        const startCue = cues.find((c) => c.id === 'sound-start');
+        const startTime = startCue?.time ?? 0;
+        if (autocutMode === 'bpm') {
+            setCutMarkers(cutsFromBpm(layout.audioBpm, autocutBarsPerCut, startTime, duration));
+        } else if (autocutMode === 'onsets') {
+            const buf = audio.state.buffer;
+            if (!buf) return;
+            setCutMarkers(detectOnsets(buf, { resolution: autocutResolution }));
+        } else if (autocutMode === 'sections') {
+            setCutMarkers([]);
+        } else {
+            setCutMarkers([]);
+        }
+    };
+    const clearCutMarkers = () => setCutMarkers([]);
+    const addCutAtPlayhead = () =>
+        setCutMarkers((m) => [...m, audio.state.currentTime].sort((a, b) => a - b));
+
+    const fetchArchive = async () => {
+        const id = parseArchiveUrl(archiveUrl);
+        if (!id) {
+            setArchiveStatus('Could not parse archive.org URL or identifier.');
+            return;
+        }
+        setArchiveStatus(`Fetching ${id}…`);
+        try {
+            const src = await fetchArchiveItem(id);
+            if (!src) {
+                setArchiveStatus(`No playable video found for ${id}.`);
+                setArchiveSource(null);
+                return;
+            }
+            setArchiveSource(src);
+            setArchiveStatus(null);
+        } catch (err) {
+            setArchiveStatus(`Fetch failed: ${(err as Error).message}`);
+        }
     };
 
     return (
@@ -825,6 +887,161 @@ export default function Studio() {
                         silence + background only so the cue lands at exactly {alignTargetTime.toFixed(2)}
                         s in every render. Set output length to 0 for natural duration.
                     </p>
+                </Panel>
+
+                <Panel title="3d. Autocut">
+                    <p className="text-xs opacity-70">
+                        Generate cut markers the Video Studio renders as vertical lines on the piano
+                        roll. Feeds batch-export (one clip per cut-to-cut segment — coming next).
+                    </p>
+                    <Row>
+                        <Field label="Mode">
+                            <select
+                                className="inp"
+                                value={autocutMode}
+                                onChange={(e) => setAutocutMode(e.target.value as AutocutMode)}
+                            >
+                                <option value="manual">Manual (tap to add)</option>
+                                <option value="bpm">BPM · bars per cut</option>
+                                <option value="onsets">Autodetect drops / onsets</option>
+                                <option value="sections">Sections (stub)</option>
+                            </select>
+                        </Field>
+                        {autocutMode === 'bpm' && (
+                            <Field label={`Bars per cut (${autocutBarsPerCut})`}>
+                                <input
+                                    type="range"
+                                    min={1}
+                                    max={32}
+                                    step={1}
+                                    value={autocutBarsPerCut}
+                                    onChange={(e) => setAutocutBarsPerCut(parseInt(e.target.value))}
+                                />
+                            </Field>
+                        )}
+                        {autocutMode === 'onsets' && (
+                            <Field label={`Resolution (${autocutResolution.toFixed(2)})`}>
+                                <input
+                                    type="range"
+                                    min={0}
+                                    max={1}
+                                    step={0.01}
+                                    value={autocutResolution}
+                                    onChange={(e) =>
+                                        setAutocutResolution(parseFloat(e.target.value))
+                                    }
+                                />
+                            </Field>
+                        )}
+                        <Field label="Actions">
+                            <div className="flex gap-2 flex-wrap">
+                                <button
+                                    className="btn"
+                                    onClick={generateAutocut}
+                                    disabled={
+                                        !audio.state.url ||
+                                        (autocutMode === 'onsets' && !audio.state.buffer)
+                                    }
+                                >
+                                    Generate
+                                </button>
+                                {autocutMode === 'manual' && (
+                                    <button
+                                        className="btn"
+                                        onClick={addCutAtPlayhead}
+                                        disabled={!audio.state.url}
+                                    >
+                                        Add @ playhead
+                                    </button>
+                                )}
+                                <button className="btn" onClick={clearCutMarkers}>
+                                    Clear
+                                </button>
+                            </div>
+                        </Field>
+                    </Row>
+                    <Toggle
+                        label="Show cut markers on piano roll"
+                        checked={showCutMarkers}
+                        onChange={setShowCutMarkers}
+                    />
+                    <p className="text-xs opacity-70 font-mono">
+                        {cutMarkers.length
+                            ? `${cutMarkers.length} markers · first ${cutMarkers[0].toFixed(2)}s · last ${cutMarkers[cutMarkers.length - 1].toFixed(2)}s`
+                            : 'No markers yet.'}
+                    </p>
+                </Panel>
+
+                <Panel title="3e. Archive.org source">
+                    <p className="text-xs opacity-70">
+                        Paste an archive.org URL or identifier — contentmint pulls the MP4 /
+                        WebM + metadata. Once staged, the autocut markers define segments to slice.
+                    </p>
+                    <Row>
+                        <Field label="Archive.org URL or identifier">
+                            <input
+                                className="inp"
+                                placeholder="https://archive.org/details/… or identifier"
+                                value={archiveUrl}
+                                onChange={(e) => setArchiveUrl(e.target.value)}
+                            />
+                        </Field>
+                        <Field label="Actions">
+                            <div className="flex gap-2 flex-wrap">
+                                <button
+                                    className="btn"
+                                    onClick={fetchArchive}
+                                    disabled={!archiveUrl.trim()}
+                                >
+                                    Fetch
+                                </button>
+                                <a className="btn" href="/tools/sources" target="_blank" rel="noopener">
+                                    Library →
+                                </a>
+                            </div>
+                        </Field>
+                    </Row>
+                    {archiveStatus && <p className="text-xs opacity-70">{archiveStatus}</p>}
+                    {archiveSource && (
+                        <div className="flex gap-3 items-start bg-white/5 rounded-md p-2">
+                            {archiveSource.thumbnail && (
+                                <img
+                                    src={archiveSource.thumbnail}
+                                    alt=""
+                                    className="w-24 rounded"
+                                />
+                            )}
+                            <div className="text-xs space-y-1 flex-1">
+                                <div className="font-semibold">{archiveSource.title}</div>
+                                {archiveSource.author && (
+                                    <div className="opacity-70">by {archiveSource.author}</div>
+                                )}
+                                {archiveSource.duration && (
+                                    <div className="opacity-70">
+                                        {archiveSource.duration.toFixed(1)}s
+                                    </div>
+                                )}
+                                <div className="flex gap-2 flex-wrap">
+                                    <a
+                                        className="btn"
+                                        href={archiveSource.pageUrl}
+                                        target="_blank"
+                                        rel="noopener"
+                                    >
+                                        Open
+                                    </a>
+                                    <a
+                                        className="btn"
+                                        href={archiveSource.videoUrl}
+                                        target="_blank"
+                                        rel="noopener"
+                                    >
+                                        Direct MP4
+                                    </a>
+                                </div>
+                            </div>
+                        </div>
+                    )}
                 </Panel>
 
                 <Panel title="4. Score strip">
