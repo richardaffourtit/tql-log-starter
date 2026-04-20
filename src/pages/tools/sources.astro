@@ -1,6 +1,7 @@
 ---
 import Layout from '../../layouts/Layout.astro';
 import { TOOLS } from '../../lib/tools';
+import SourcesApp from '../../components/tools/SourcesApp.astro';
 
 const tool = TOOLS.find((t) => t.slug === 'sources')!;
 ---
@@ -24,46 +25,7 @@ const tool = TOOLS.find((t) => t.slug === 'sources')!;
         <p class="opacity-80 leading-relaxed">{tool.description}</p>
     </section>
 
-    <section class="rounded-xl p-6 bg-black/40 border border-white/10 space-y-6">
-        <div class="space-y-2">
-            <h3 class="font-semibold">Archive.org</h3>
-            <form id="archive-form" class="flex gap-2">
-                <input
-                    name="url"
-                    required
-                    placeholder="https://archive.org/details/… or identifier"
-                    class="cm-input flex-1"
-                />
-                <button class="cm-btn">Fetch</button>
-            </form>
-            <div id="archive-result" class="text-sm opacity-80"></div>
-        </div>
-
-        <div class="space-y-2">
-            <h3 class="font-semibold">Pexels <span class="opacity-50 text-xs">(portrait video)</span></h3>
-            <form id="pexels-form" class="grid grid-cols-1 sm:grid-cols-[1fr_220px_auto] gap-2">
-                <input name="q" required placeholder="search query" class="cm-input" />
-                <input name="key" placeholder="PEXELS_API_KEY (stored locally)" class="cm-input" />
-                <button class="cm-btn">Search</button>
-            </form>
-            <ul id="pexels-list" class="grid grid-cols-2 sm:grid-cols-3 gap-3"></ul>
-        </div>
-
-        <div class="space-y-2">
-            <h3 class="font-semibold">Pixabay</h3>
-            <form id="pixabay-form" class="grid grid-cols-1 sm:grid-cols-[1fr_220px_auto] gap-2">
-                <input name="q" required placeholder="search query" class="cm-input" />
-                <input name="key" placeholder="PIXABAY_API_KEY (stored locally)" class="cm-input" />
-                <button class="cm-btn">Search</button>
-            </form>
-            <ul id="pixabay-list" class="grid grid-cols-2 sm:grid-cols-3 gap-3"></ul>
-        </div>
-
-        <div class="space-y-2">
-            <h3 class="font-semibold">Your library</h3>
-            <ul id="user-list" class="grid grid-cols-2 sm:grid-cols-3 gap-3"></ul>
-        </div>
-    </section>
+    <SourcesApp />
 
     <a href="/tools" class="cm-btn cm-btn--ghost mt-6 inline-flex">← Back to tools</a>
 
@@ -74,142 +36,5 @@ const tool = TOOLS.find((t) => t.slug === 'sources')!;
             background-clip: text;
             color: transparent;
         }
-        .cm-input {
-            background: rgba(255, 255, 255, 0.05);
-            border: 1px solid rgba(255, 255, 255, 0.15);
-            border-radius: 8px;
-            padding: 0.5rem 0.75rem;
-            font-size: 0.9rem;
-            color: white;
-            width: 100%;
-        }
     </style>
-
-    <script>
-        import {
-            parseArchiveUrl,
-            fetchArchiveItem,
-            searchPexels,
-            searchPixabay,
-            loadUserLibrary,
-            saveToUserLibrary,
-            removeFromUserLibrary,
-            type VideoSource
-        } from '../../lib/sourceLibrary';
-
-        const KEY_CACHE = 'contentmint:api-keys';
-        const keys = (() => {
-            try {
-                return JSON.parse(localStorage.getItem(KEY_CACHE) ?? '{}') as Record<string, string>;
-            } catch {
-                return {} as Record<string, string>;
-            }
-        })();
-        function rememberKey(name: string, value: string) {
-            if (!value) return;
-            keys[name] = value;
-            localStorage.setItem(KEY_CACHE, JSON.stringify(keys));
-        }
-        (document.querySelector<HTMLInputElement>('#pexels-form input[name="key"]')!).value = keys.pexels ?? '';
-        (document.querySelector<HTMLInputElement>('#pixabay-form input[name="key"]')!).value = keys.pixabay ?? '';
-
-        function renderResult(src: VideoSource) {
-            const thumb = src.thumbnail ?? src.videoUrl;
-            return `<li class="rounded-lg border border-white/10 p-2 bg-white/5 text-xs space-y-1">
-                <div class="aspect-[9/16] bg-black rounded overflow-hidden">
-                    ${thumb ? `<img src="${thumb}" alt="" class="w-full h-full object-cover" />` : ''}
-                </div>
-                <div class="truncate" title="${src.title}">${src.title}</div>
-                <div class="flex justify-between items-center gap-1">
-                    <a href="${src.pageUrl ?? src.videoUrl}" target="_blank" rel="noopener" class="opacity-70 underline">src</a>
-                    <button data-save='${JSON.stringify(src).replace(/'/g, '&apos;')}' class="cm-btn cm-btn--ghost !py-0.5 !px-2">save</button>
-                </div>
-            </li>`;
-        }
-
-        function renderUser() {
-            const lib = loadUserLibrary();
-            const list = document.getElementById('user-list')!;
-            list.innerHTML = lib
-                .map(
-                    (s) => `<li class="rounded-lg border border-white/10 p-2 bg-white/5 text-xs space-y-1">
-                ${s.thumbnail ? `<img src="${s.thumbnail}" class="w-full aspect-[9/16] object-cover rounded" />` : ''}
-                <div class="truncate" title="${s.title}">${s.title}</div>
-                <div class="flex justify-between"><span class="opacity-60">${s.provider}</span>
-                <button data-del="${s.provider}|${s.id}" class="opacity-70 hover:opacity-100">✕</button></div>
-            </li>`
-                )
-                .join('');
-            list.querySelectorAll<HTMLButtonElement>('[data-del]').forEach((btn) =>
-                btn.addEventListener('click', () => {
-                    const [provider, id] = btn.dataset.del!.split('|');
-                    removeFromUserLibrary(provider as any, id);
-                    renderUser();
-                })
-            );
-        }
-
-        function wireSave(root: HTMLElement) {
-            root.querySelectorAll<HTMLButtonElement>('[data-save]').forEach((btn) =>
-                btn.addEventListener('click', () => {
-                    const src = JSON.parse((btn.dataset.save ?? '').replace(/&apos;/g, "'")) as VideoSource;
-                    saveToUserLibrary(src);
-                    renderUser();
-                })
-            );
-        }
-
-        document.getElementById('archive-form')!.addEventListener('submit', async (e) => {
-            e.preventDefault();
-            const f = new FormData(e.target as HTMLFormElement);
-            const id = parseArchiveUrl(String(f.get('url')));
-            const out = document.getElementById('archive-result')!;
-            if (!id) {
-                out.textContent = 'Could not parse an archive.org identifier.';
-                return;
-            }
-            out.textContent = `Fetching ${id}…`;
-            const src = await fetchArchiveItem(id);
-            if (!src) {
-                out.textContent = `No playable video found for ${id}.`;
-                return;
-            }
-            out.innerHTML = `<ul class="grid grid-cols-2 sm:grid-cols-3 gap-3">${renderResult(src)}</ul>`;
-            wireSave(out);
-        });
-
-        document.getElementById('pexels-form')!.addEventListener('submit', async (e) => {
-            e.preventDefault();
-            const f = new FormData(e.target as HTMLFormElement);
-            const key = String(f.get('key') ?? '');
-            rememberKey('pexels', key);
-            const list = document.getElementById('pexels-list')!;
-            list.innerHTML = '<li class="opacity-60 text-xs">searching…</li>';
-            try {
-                const out = await searchPexels(String(f.get('q')), key);
-                list.innerHTML = out.map(renderResult).join('');
-                wireSave(list);
-            } catch (err) {
-                list.innerHTML = `<li class="text-xs text-red-300">${(err as Error).message}</li>`;
-            }
-        });
-
-        document.getElementById('pixabay-form')!.addEventListener('submit', async (e) => {
-            e.preventDefault();
-            const f = new FormData(e.target as HTMLFormElement);
-            const key = String(f.get('key') ?? '');
-            rememberKey('pixabay', key);
-            const list = document.getElementById('pixabay-list')!;
-            list.innerHTML = '<li class="opacity-60 text-xs">searching…</li>';
-            try {
-                const out = await searchPixabay(String(f.get('q')), key);
-                list.innerHTML = out.map(renderResult).join('');
-                wireSave(list);
-            } catch (err) {
-                list.innerHTML = `<li class="text-xs text-red-300">${(err as Error).message}</li>`;
-            }
-        });
-
-        renderUser();
-    </script>
 </Layout>

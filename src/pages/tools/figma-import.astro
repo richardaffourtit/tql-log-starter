@@ -1,0 +1,227 @@
+---
+import Layout from '../../layouts/Layout.astro';
+import { TOOLS } from '../../lib/tools';
+
+const tool = TOOLS.find((t) => t.slug === 'figma-import')!;
+---
+
+<Layout title={`${tool.name} · contentmint`}>
+    <div class="flex items-end justify-between flex-wrap gap-4 mb-2">
+        <h1 class="tracking-tight text-4xl sm:text-5xl font-extrabold">
+            <span class="text-white">content</span><span class="cm-mint">mint</span>
+            <span class="opacity-60 font-normal text-2xl sm:text-3xl ml-3">/ {tool.name}</span>
+        </h1>
+        <span
+            class="text-xs uppercase tracking-widest px-2 py-1 rounded-md"
+            style={`background: ${tool.accent}33; color: ${tool.accent}; border: 1px solid ${tool.accent}66;`}
+            >{tool.status}</span
+        >
+    </div>
+    <p class="mb-8 text-lg opacity-80">{tool.tagline}</p>
+
+    <section class="rounded-xl p-6 bg-white/5 border border-white/10 space-y-3 mb-6">
+        <p class="opacity-80 leading-relaxed">{tool.description}</p>
+        <ul class="list-disc pl-6 opacity-80 text-sm space-y-1">
+            <li>
+                Get a personal access token: Figma → <em>Settings → Security → Personal access tokens</em>.
+                Give it <code>File content</code> read scope. The token stays in this browser only.
+            </li>
+            <li>
+                Paste a share URL (<code>figma.com/file/…</code> or <code>figma.com/design/…</code>) or just the file key.
+            </li>
+            <li>
+                contentmint walks the file and pulls SOLID color fills, TEXT style tuples, and the first 24 top-level frames
+                per page (with thumbnails).
+            </li>
+            <li>
+                Click <strong>Push to Brand Kit</strong> to merge the palette + text styles into your kit.
+            </li>
+        </ul>
+    </section>
+
+    <section class="rounded-xl p-6 bg-black/40 border border-white/10 space-y-4">
+        <div class="grid grid-cols-1 sm:grid-cols-[1fr_1fr_auto] gap-2 items-end">
+            <label class="text-sm opacity-80 block">
+                Figma URL or file key
+                <input id="fg-url" type="text" placeholder="https://figma.com/design/…" class="cm-input mt-1" />
+            </label>
+            <label class="text-sm opacity-80 block">
+                Personal access token
+                <input id="fg-token" type="password" placeholder="figd_…" class="cm-input mt-1" />
+            </label>
+            <button id="fg-fetch" class="cm-btn">Fetch</button>
+        </div>
+        <div id="fg-status" class="text-sm opacity-70">Ready.</div>
+    </section>
+
+    <section id="fg-result" class="rounded-xl p-6 bg-black/40 border border-white/10 space-y-6 mt-6 hidden">
+        <div class="flex items-center justify-between flex-wrap gap-2">
+            <div>
+                <div class="text-xs uppercase tracking-widest opacity-60">File</div>
+                <div id="fg-file-name" class="text-xl font-semibold"></div>
+            </div>
+            <div class="flex gap-2">
+                <button id="fg-push" class="cm-btn">Push to Brand Kit</button>
+                <button id="fg-copy" class="cm-btn cm-btn--ghost">Copy JSON</button>
+            </div>
+        </div>
+
+        <div>
+            <div class="text-xs uppercase tracking-widest opacity-60 mb-2">Palette</div>
+            <div id="fg-colors" class="grid grid-cols-[repeat(auto-fill,minmax(120px,1fr))] gap-2"></div>
+        </div>
+
+        <div>
+            <div class="text-xs uppercase tracking-widest opacity-60 mb-2">Text styles</div>
+            <div id="fg-text" class="grid grid-cols-1 sm:grid-cols-2 gap-2"></div>
+        </div>
+
+        <div>
+            <div class="text-xs uppercase tracking-widest opacity-60 mb-2">Frames</div>
+            <div id="fg-frames" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3"></div>
+        </div>
+    </section>
+
+    <a href="/tools" class="cm-btn cm-btn--ghost mt-6 inline-flex">← Back to tools</a>
+
+    <style>
+        .cm-mint {
+            background: linear-gradient(90deg, #7b2bff 0%, #a855f7 100%);
+            -webkit-background-clip: text;
+            background-clip: text;
+            color: transparent;
+        }
+        .cm-input {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            border-radius: 8px;
+            padding: 0.5rem 0.75rem;
+            color: white;
+            width: 100%;
+        }
+        .swatch {
+            border-radius: 8px;
+            padding: 8px;
+            font-size: 11px;
+            line-height: 1.2;
+            word-break: break-all;
+            border: 1px solid rgba(255, 255, 255, 0.15);
+        }
+    </style>
+
+    <script>
+        import { parseFigmaUrl, fetchFigmaSummary, type FigmaSummary } from '../../lib/figmaImport';
+        import { loadKit, saveKit } from '../../lib/brandKit';
+
+        const TOKEN_KEY = 'contentmint:figma-token';
+        const urlInput = document.getElementById('fg-url') as HTMLInputElement;
+        const tokenInput = document.getElementById('fg-token') as HTMLInputElement;
+        const fetchBtn = document.getElementById('fg-fetch') as HTMLButtonElement;
+        const status = document.getElementById('fg-status')!;
+        const resultSection = document.getElementById('fg-result')!;
+        const fileName = document.getElementById('fg-file-name')!;
+        const colorsEl = document.getElementById('fg-colors')!;
+        const textEl = document.getElementById('fg-text')!;
+        const framesEl = document.getElementById('fg-frames')!;
+        const pushBtn = document.getElementById('fg-push') as HTMLButtonElement;
+        const copyBtn = document.getElementById('fg-copy') as HTMLButtonElement;
+
+        let lastSummary: FigmaSummary | null = null;
+
+        const cachedToken = localStorage.getItem(TOKEN_KEY);
+        if (cachedToken) tokenInput.value = cachedToken;
+
+        fetchBtn.addEventListener('click', async () => {
+            const key = parseFigmaUrl(urlInput.value);
+            const token = tokenInput.value.trim();
+            if (!key) {
+                status.textContent = 'Could not parse a Figma file key from that URL.';
+                return;
+            }
+            if (!token) {
+                status.textContent = 'Need a personal access token.';
+                return;
+            }
+            localStorage.setItem(TOKEN_KEY, token);
+            fetchBtn.disabled = true;
+            status.textContent = 'Fetching Figma file…';
+            try {
+                const summary = await fetchFigmaSummary(key, token);
+                lastSummary = summary;
+                render(summary);
+                status.textContent = `Fetched ${summary.colors.length} colors, ${summary.textStyles.length} text styles, ${summary.frames.length} frames.`;
+            } catch (err) {
+                status.textContent = `Error: ${(err as Error).message}`;
+            } finally {
+                fetchBtn.disabled = false;
+            }
+        });
+
+        function render(s: FigmaSummary) {
+            resultSection.classList.remove('hidden');
+            fileName.textContent = s.name;
+
+            colorsEl.innerHTML = s.colors
+                .map((c) => {
+                    const text = readableText(c.hex);
+                    return `<div class="swatch" style="background:${c.hex};color:${text};"><div><strong>${escapeHtml(c.name)}</strong></div><div>${c.hex}</div></div>`;
+                })
+                .join('') || '<div class="opacity-60 text-sm">No solid fills found.</div>';
+
+            textEl.innerHTML = s.textStyles
+                .map(
+                    (t) =>
+                        `<div class="rounded-lg border border-white/10 bg-white/5 p-3"><div class="text-xs opacity-60">${escapeHtml(t.name)}</div><div class="mt-1" style="font-family:${escapeAttr(t.fontFamily)};font-weight:${t.fontWeight};font-size:${Math.min(t.fontSize, 28)}px;">${escapeHtml(t.fontFamily)} ${t.fontWeight} · ${t.fontSize}px</div></div>`
+                )
+                .join('') || '<div class="opacity-60 text-sm">No text styles found.</div>';
+
+            framesEl.innerHTML = s.frames
+                .map(
+                    (f) => `<div class="rounded-lg border border-white/10 bg-white/5 p-2 space-y-1">
+                        ${f.thumbnailUrl ? `<img src="${f.thumbnailUrl}" alt="${escapeAttr(f.name)}" class="w-full rounded-md bg-black" loading="lazy" />` : '<div class="aspect-[16/9] rounded-md bg-black/40"></div>'}
+                        <div class="text-xs font-semibold truncate">${escapeHtml(f.name)}</div>
+                        <div class="text-[10px] opacity-60 truncate">${escapeHtml(f.pageName)}</div>
+                    </div>`
+                )
+                .join('') || '<div class="opacity-60 text-sm">No top-level frames found.</div>';
+        }
+
+        pushBtn.addEventListener('click', () => {
+            if (!lastSummary) return;
+            const kit = loadKit();
+            const existingHex = new Set(kit.palette.map((p) => p.hex.toLowerCase()));
+            const merged = [...kit.palette];
+            for (const c of lastSummary.colors) {
+                if (!existingHex.has(c.hex.toLowerCase())) {
+                    merged.push({ name: c.name, hex: c.hex });
+                    existingHex.add(c.hex.toLowerCase());
+                }
+            }
+            saveKit({ ...kit, palette: merged });
+            status.textContent = `Pushed ${merged.length - kit.palette.length} new colors to Brand Kit.`;
+        });
+
+        copyBtn.addEventListener('click', async () => {
+            if (!lastSummary) return;
+            await navigator.clipboard.writeText(JSON.stringify(lastSummary, null, 2));
+            status.textContent = 'Copied Figma summary JSON to clipboard.';
+        });
+
+        function readableText(hex: string): string {
+            const n = parseInt(hex.slice(1), 16);
+            const r = (n >> 16) & 0xff;
+            const g = (n >> 8) & 0xff;
+            const b = n & 0xff;
+            const l = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+            return l > 140 ? '#0b0b0b' : '#ffffff';
+        }
+
+        function escapeHtml(s: string): string {
+            return s.replace(/[&<>"']/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]!));
+        }
+
+        function escapeAttr(s: string): string {
+            return s.replace(/["'<>]/g, '');
+        }
+    </script>
+</Layout>

@@ -108,7 +108,37 @@ export const TOOLS: ToolMeta[] = [
         status: 'stub',
         href: '/tools/scene',
         accent: '#ff9a00'
+    },
+    {
+        slug: 'figma-import',
+        name: 'Figma Import',
+        tagline: 'Pull palette + type + frames into Brand Kit',
+        description:
+            'Paste a Figma file URL + personal access token. contentmint reads the file, extracts color styles, text styles, and top-level frame thumbnails, and pushes them into your Brand Kit so every tool speaks the same design language.',
+        status: 'beta',
+        href: '/tools/figma-import',
+        accent: '#f24e1e'
+    },
+    {
+        slug: 'embed-guide',
+        name: 'Embed Guide',
+        tagline: 'Iframe snippets for Framer / any site',
+        description:
+            'Every tool has an embeddable `/embed/<slug>` route with no chrome and a transparent background. Copy the iframe snippet here into a Framer page (or any site) to run contentmint right inside your layout.',
+        status: 'live',
+        href: '/tools/embed-guide',
+        accent: '#0095ff'
     }
+];
+
+export const EMBED_TOOLS: string[] = [
+    'video-studio',
+    'brand-kit',
+    'sources',
+    'bg-remove',
+    'depth',
+    'scene',
+    'figma-import'
 ];
 
 export const EXPORT_MODES = [

@@ -1,0 +1,299 @@
+---
+// Interactive Brand Kit app. Used by both /tools/brand-kit and /embed/brand-kit.
+---
+
+<section id="kit-app" class="rounded-xl p-6 bg-black/40 border border-white/10 space-y-6">
+    <div class="flex flex-wrap gap-2">
+        <button data-tab="assets" class="kit-tab cm-btn cm-btn--ghost active">Assets</button>
+        <button data-tab="copy" class="kit-tab cm-btn cm-btn--ghost">Copy</button>
+        <button data-tab="links" class="kit-tab cm-btn cm-btn--ghost">Links</button>
+        <button data-tab="palette" class="kit-tab cm-btn cm-btn--ghost">Palette</button>
+        <div class="ml-auto flex gap-2">
+            <button id="kit-export" class="cm-btn cm-btn--ghost">Export JSON</button>
+            <label class="cm-btn cm-btn--ghost cursor-pointer">
+                Import
+                <input id="kit-import" type="file" accept="application/json" class="hidden" />
+            </label>
+        </div>
+    </div>
+
+    <div data-panel="assets" class="kit-panel space-y-3">
+        <form id="asset-form" class="grid grid-cols-1 sm:grid-cols-[120px_1fr_1fr_auto] gap-2">
+            <select name="kind" class="cm-input">
+                <option value="image">Image</option>
+                <option value="gif">GIF</option>
+                <option value="video">Video</option>
+                <option value="header">Header</option>
+                <option value="audio">Audio</option>
+                <option value="font">Font</option>
+            </select>
+            <input name="name" required placeholder="Asset name" class="cm-input" />
+            <input name="url" required placeholder="https://… or data:…" class="cm-input" />
+            <button class="cm-btn">Add</button>
+        </form>
+        <ul id="asset-list" class="grid grid-cols-2 sm:grid-cols-3 gap-3"></ul>
+    </div>
+
+    <div data-panel="copy" class="kit-panel hidden space-y-3">
+        <form id="copy-form" class="grid grid-cols-1 sm:grid-cols-[140px_1fr_auto] gap-2">
+            <select name="kind" class="cm-input">
+                <option value="bio">Bio</option>
+                <option value="tagline">Tagline</option>
+                <option value="caption">Caption</option>
+                <option value="cta">CTA</option>
+                <option value="lyric">Lyric</option>
+                <option value="credit">Credit</option>
+                <option value="custom">Custom</option>
+            </select>
+            <input name="label" required placeholder="Label (e.g. TikTok long bio)" class="cm-input" />
+            <button class="cm-btn">Add</button>
+            <textarea name="body" required placeholder="Body" rows="3" class="cm-input sm:col-span-3"></textarea>
+            <input name="platforms" placeholder="platforms: tiktok, ig, yt (optional)" class="cm-input sm:col-span-3" />
+        </form>
+        <ul id="copy-list" class="space-y-2"></ul>
+    </div>
+
+    <div data-panel="links" class="kit-panel hidden space-y-3">
+        <form id="link-form" class="grid grid-cols-1 sm:grid-cols-[140px_1fr_1fr_auto] gap-2">
+            <select name="group" class="cm-input">
+                <option value="social">Social</option>
+                <option value="music">Music</option>
+                <option value="merch">Merch</option>
+                <option value="press">Press</option>
+                <option value="custom">Custom</option>
+            </select>
+            <input name="label" required placeholder="Label (e.g. Spotify)" class="cm-input" />
+            <input name="url" required placeholder="https://…" class="cm-input" />
+            <button class="cm-btn">Add</button>
+        </form>
+        <ul id="link-list" class="space-y-2"></ul>
+    </div>
+
+    <div data-panel="palette" class="kit-panel hidden">
+        <ul id="palette-list" class="grid grid-cols-2 sm:grid-cols-4 gap-3"></ul>
+    </div>
+</section>
+
+<style>
+    .cm-input {
+        background: rgba(255, 255, 255, 0.05);
+        border: 1px solid rgba(255, 255, 255, 0.15);
+        border-radius: 8px;
+        padding: 0.5rem 0.75rem;
+        font-size: 0.9rem;
+        color: white;
+        width: 100%;
+    }
+    .kit-tab.active {
+        background: rgba(168, 85, 247, 0.2);
+        border-color: rgba(168, 85, 247, 0.5);
+    }
+</style>
+
+<script>
+    import {
+        loadKit,
+        saveKit,
+        addAsset,
+        removeAsset,
+        upsertCopy,
+        removeCopy,
+        upsertLink,
+        removeLink,
+        exportKit,
+        importKit
+    } from '../../lib/brandKit';
+
+    let kit = loadKit();
+
+    function render() {
+        const assets = document.getElementById('asset-list')!;
+        assets.innerHTML = kit.assets
+            .map((a) => {
+                const preview =
+                    a.kind === 'image' || a.kind === 'gif' || a.kind === 'header'
+                        ? `<img src="${a.url}" alt="${a.name}" class="w-full h-32 object-cover rounded-md" />`
+                        : a.kind === 'video'
+                          ? `<video src="${a.url}" class="w-full h-32 object-cover rounded-md" muted loop></video>`
+                          : `<div class="w-full h-32 rounded-md bg-white/5 flex items-center justify-center text-xs opacity-60">${a.kind}</div>`;
+                return `<li class="rounded-lg border border-white/10 p-2 bg-white/5 text-xs space-y-1">
+                    ${preview}
+                    <div class="flex items-center justify-between gap-2">
+                        <span class="truncate" title="${a.name}">${a.name}</span>
+                        <button data-del-asset="${a.id}" class="opacity-60 hover:opacity-100">✕</button>
+                    </div>
+                </li>`;
+            })
+            .join('');
+        assets.querySelectorAll<HTMLButtonElement>('[data-del-asset]').forEach((btn) => {
+            btn.addEventListener('click', () => {
+                kit = removeAsset(kit, btn.dataset.delAsset!);
+                saveKit(kit);
+                render();
+            });
+        });
+
+        const copy = document.getElementById('copy-list')!;
+        copy.innerHTML = kit.copy
+            .map(
+                (c) => `<li class="rounded-lg border border-white/10 p-3 bg-white/5 text-sm space-y-1">
+                <div class="flex items-center justify-between gap-2">
+                    <div class="flex gap-2 items-center">
+                        <span class="uppercase text-[10px] tracking-widest opacity-70">${c.kind}</span>
+                        <span class="font-semibold">${c.label}</span>
+                    </div>
+                    <div class="flex gap-2">
+                        <button data-copy-body="${c.id}" class="text-xs opacity-70 hover:opacity-100">copy</button>
+                        <button data-del-copy="${c.id}" class="opacity-60 hover:opacity-100">✕</button>
+                    </div>
+                </div>
+                <pre class="whitespace-pre-wrap text-xs opacity-90">${escapeHtml(c.body)}</pre>
+                ${c.platforms?.length ? `<div class="text-[10px] opacity-60">${c.platforms.join(' · ')}</div>` : ''}
+            </li>`
+            )
+            .join('');
+        copy.querySelectorAll<HTMLButtonElement>('[data-del-copy]').forEach((btn) =>
+            btn.addEventListener('click', () => {
+                kit = removeCopy(kit, btn.dataset.delCopy!);
+                saveKit(kit);
+                render();
+            })
+        );
+        copy.querySelectorAll<HTMLButtonElement>('[data-copy-body]').forEach((btn) =>
+            btn.addEventListener('click', () => {
+                const entry = kit.copy.find((c) => c.id === btn.dataset.copyBody);
+                if (entry) navigator.clipboard.writeText(entry.body);
+            })
+        );
+
+        const links = document.getElementById('link-list')!;
+        links.innerHTML = kit.links
+            .map(
+                (l) => `<li class="rounded-lg border border-white/10 p-3 bg-white/5 text-sm flex items-center gap-3">
+                <span class="uppercase text-[10px] tracking-widest opacity-70 w-14">${l.group ?? '—'}</span>
+                <span class="font-semibold">${l.label}</span>
+                <a href="${l.url}" target="_blank" rel="noopener" class="opacity-70 hover:opacity-100 underline truncate flex-1">${l.url}</a>
+                <button data-copy-link="${l.id}" class="text-xs opacity-70 hover:opacity-100">copy</button>
+                <button data-del-link="${l.id}" class="opacity-60 hover:opacity-100">✕</button>
+            </li>`
+            )
+            .join('');
+        links.querySelectorAll<HTMLButtonElement>('[data-del-link]').forEach((btn) =>
+            btn.addEventListener('click', () => {
+                kit = removeLink(kit, btn.dataset.delLink!);
+                saveKit(kit);
+                render();
+            })
+        );
+        links.querySelectorAll<HTMLButtonElement>('[data-copy-link]').forEach((btn) =>
+            btn.addEventListener('click', () => {
+                const entry = kit.links.find((l) => l.id === btn.dataset.copyLink);
+                if (entry) navigator.clipboard.writeText(entry.url);
+            })
+        );
+
+        const palette = document.getElementById('palette-list')!;
+        palette.innerHTML = kit.palette
+            .map(
+                (p) => `<li class="rounded-lg border border-white/10 overflow-hidden">
+                <div style="background:${p.hex}; height: 72px;"></div>
+                <div class="p-2 text-xs flex justify-between">
+                    <span>${p.name}</span>
+                    <button data-copy-hex="${p.hex}" class="opacity-70 hover:opacity-100">${p.hex}</button>
+                </div>
+            </li>`
+            )
+            .join('');
+        palette.querySelectorAll<HTMLButtonElement>('[data-copy-hex]').forEach((btn) =>
+            btn.addEventListener('click', () => navigator.clipboard.writeText(btn.dataset.copyHex!))
+        );
+    }
+
+    function escapeHtml(s: string) {
+        return s.replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[c] ?? c);
+    }
+
+    document.querySelectorAll<HTMLButtonElement>('.kit-tab').forEach((b) => {
+        b.addEventListener('click', () => {
+            document.querySelectorAll('.kit-tab').forEach((x) => x.classList.remove('active'));
+            b.classList.add('active');
+            document
+                .querySelectorAll<HTMLElement>('.kit-panel')
+                .forEach((p) => p.classList.toggle('hidden', p.dataset.panel !== b.dataset.tab));
+        });
+    });
+
+    document.getElementById('asset-form')!.addEventListener('submit', (e) => {
+        e.preventDefault();
+        const f = new FormData(e.target as HTMLFormElement);
+        kit = addAsset(kit, {
+            kind: f.get('kind') as any,
+            name: String(f.get('name')),
+            url: String(f.get('url'))
+        });
+        saveKit(kit);
+        (e.target as HTMLFormElement).reset();
+        render();
+    });
+
+    document.getElementById('copy-form')!.addEventListener('submit', (e) => {
+        e.preventDefault();
+        const f = new FormData(e.target as HTMLFormElement);
+        const platforms = String(f.get('platforms') ?? '')
+            .split(',')
+            .map((s) => s.trim())
+            .filter(Boolean);
+        kit = upsertCopy(kit, {
+            slug: String(f.get('label'))
+                .toLowerCase()
+                .replace(/\s+/g, '-'),
+            label: String(f.get('label')),
+            body: String(f.get('body')),
+            kind: f.get('kind') as any,
+            platforms: platforms.length ? platforms : undefined
+        });
+        saveKit(kit);
+        (e.target as HTMLFormElement).reset();
+        render();
+    });
+
+    document.getElementById('link-form')!.addEventListener('submit', (e) => {
+        e.preventDefault();
+        const f = new FormData(e.target as HTMLFormElement);
+        kit = upsertLink(kit, {
+            label: String(f.get('label')),
+            url: String(f.get('url')),
+            group: f.get('group') as any
+        });
+        saveKit(kit);
+        (e.target as HTMLFormElement).reset();
+        render();
+    });
+
+    document.getElementById('kit-export')!.addEventListener('click', () => {
+        const blob = new Blob([exportKit(kit)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `contentmint-kit-${Date.now()}.json`;
+        a.click();
+        URL.revokeObjectURL(url);
+    });
+
+    document.getElementById('kit-import')!.addEventListener('change', async (e) => {
+        const input = e.target as HTMLInputElement;
+        const file = input.files?.[0];
+        if (!file) return;
+        const text = await file.text();
+        try {
+            kit = importKit(text);
+            saveKit(kit);
+            render();
+        } catch {
+            alert('Invalid kit JSON');
+        }
+        input.value = '';
+    });
+
+    render();
+</script>
