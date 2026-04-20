@@ -372,6 +372,52 @@ export function applyTileMosh(ctx: CanvasRenderingContext2D, strength: number, t
     ctx.restore();
 }
 
+export interface StemLane {
+    label: string;
+    color: string;
+    freq: Uint8Array | null;
+}
+
+export interface StemLanesOpts {
+    lanes: StemLane[];
+    y0: number;
+    h: number;
+    labelSize?: number;
+}
+
+export function drawStemLanes(rc: RenderCtx, opts: StemLanesOpts) {
+    const { ctx } = rc;
+    const { lanes, y0, h, labelSize = 22 } = opts;
+    if (!lanes.length) return;
+    const laneH = h / lanes.length;
+    ctx.save();
+    ctx.textBaseline = 'middle';
+    ctx.font = `600 ${labelSize}px "Space Mono", ui-monospace, monospace`;
+    for (let i = 0; i < lanes.length; i++) {
+        const lane = lanes[i];
+        const ly = y0 + i * laneH;
+        ctx.fillStyle = 'rgba(0,0,0,0.25)';
+        ctx.fillRect(0, ly, CANVAS_W, laneH - 4);
+        ctx.fillStyle = lane.color + 'cc';
+        ctx.fillText(lane.label.toUpperCase(), 24, ly + laneH / 2);
+        if (!lane.freq) continue;
+        const bars = 48;
+        const step = Math.floor(lane.freq.length / bars) || 1;
+        const barW = (CANVAS_W - 200) / bars;
+        for (let b = 0; b < bars; b++) {
+            let sum = 0;
+            for (let j = 0; j < step; j++) sum += lane.freq[b * step + j];
+            const avg = sum / step / 255;
+            const bh = Math.max(2, avg * (laneH - 12));
+            ctx.fillStyle = lane.color;
+            ctx.globalAlpha = 0.2 + avg * 0.8;
+            ctx.fillRect(200 + b * barW + 1, ly + laneH - bh - 4, barW - 2, bh);
+        }
+        ctx.globalAlpha = 1;
+    }
+    ctx.restore();
+}
+
 export interface CutMarkerOpts {
     markers: number[];
     y0: number;

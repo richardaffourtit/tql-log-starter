@@ -1,0 +1,28 @@
+---
+import Layout from '../../layouts/Layout.astro';
+import Studio from '../../components/studio/Studio.tsx';
+---
+
+<Layout title="Video Studio · contentmint">
+    <div class="flex items-end justify-between flex-wrap gap-4 mb-2">
+        <h1 class="tracking-tight text-4xl sm:text-5xl font-extrabold">
+            <span class="text-white">content</span><span class="cm-mint">mint</span>
+            <span class="opacity-60 font-normal text-2xl sm:text-3xl ml-3">/ Video Studio</span>
+        </h1>
+        <span class="opacity-70 text-sm">by g00dweird</span>
+    </div>
+    <p class="mb-8 text-lg opacity-80">
+        Turn a track plus a score (MIDI, MusicXML, or GuitarPro) into a 9:16 video. Staff/tab,
+        spectrum, waveform, wordmark, stems, autocut, and deploy metadata — exported to WebM.
+    </p>
+    <Studio client:only="react" />
+    <a href="/tools" class="cm-btn cm-btn--ghost mt-6 inline-flex">← Back to tools</a>
+    <style>
+        .cm-mint {
+            background: linear-gradient(90deg, #7b2bff 0%, #a855f7 100%);
+            -webkit-background-clip: text;
+            background-clip: text;
+            color: transparent;
+        }
+    </style>
+</Layout>

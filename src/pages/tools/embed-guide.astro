@@ -1,0 +1,144 @@
+---
+import Layout from '../../layouts/Layout.astro';
+import { TOOLS, EMBED_TOOLS } from '../../lib/tools';
+
+const tool = TOOLS.find((t) => t.slug === 'embed-guide')!;
+const origin = new URL('/', Astro.url).origin;
+const embeds = EMBED_TOOLS.map((slug) => {
+    const t = TOOLS.find((x) => x.slug === slug);
+    if (!t) return null;
+    return { ...t, embedHref: `/embed/${slug}` };
+}).filter(Boolean) as Array<(typeof TOOLS)[number] & { embedHref: string }>;
+---
+
+<Layout title={`${tool.name} · contentmint`}>
+    <div class="flex items-end justify-between flex-wrap gap-4 mb-2">
+        <h1 class="tracking-tight text-4xl sm:text-5xl font-extrabold">
+            <span class="text-white">content</span><span class="cm-mint">mint</span>
+            <span class="opacity-60 font-normal text-2xl sm:text-3xl ml-3">/ {tool.name}</span>
+        </h1>
+        <span
+            class="text-xs uppercase tracking-widest px-2 py-1 rounded-md"
+            style={`background: ${tool.accent}33; color: ${tool.accent}; border: 1px solid ${tool.accent}66;`}
+            >{tool.status}</span
+        >
+    </div>
+    <p class="mb-8 text-lg opacity-80">{tool.tagline}</p>
+
+    <section class="rounded-xl p-6 bg-white/5 border border-white/10 space-y-3 mb-6">
+        <h2 class="text-xl font-semibold">How it works</h2>
+        <ol class="list-decimal pl-6 opacity-80 space-y-1 text-sm">
+            <li>Every tool has a chrome-less <code>/embed/&lt;slug&gt;</code> route with a transparent background.</li>
+            <li>Copy the iframe snippet below and paste it into a Framer page (Insert → Embed → HTML Embed).</li>
+            <li>
+                Framer strips same-origin cookies from the iframe, but <code>localStorage</code> still works inside the embed,
+                so your Brand Kit data persists on the contentmint origin.
+            </li>
+            <li>
+                For features that need a microphone, webcam, or file picker, Framer will automatically honor the <code
+                    >allow</code
+                > attributes in the snippet.
+            </li>
+            <li>
+                Current deployed base: <code>{origin}</code>. If you publish to a different domain, swap that prefix before
+                pasting.
+            </li>
+        </ol>
+    </section>
+
+    <section class="rounded-xl p-6 bg-white/5 border border-white/10 space-y-3 mb-6">
+        <h2 class="text-xl font-semibold">Framer: iframe vs subdomain</h2>
+        <ul class="list-disc pl-6 opacity-80 space-y-1 text-sm">
+            <li>
+                <strong>Iframe (recommended)</strong>: paste one <code>&lt;iframe&gt;</code> into a Framer section. Keep the
+                Framer-designed header, footer, and typography around it.
+            </li>
+            <li>
+                <strong>Subdomain split</strong>: point <code>tools.yourdomain.com</code> at contentmint (Netlify), leave the
+                marketing site on Framer. Link out instead of embedding. Best for the heavier tools like Video Studio when
+                you want a full-screen experience.
+            </li>
+            <li>
+                Scroll vs fixed-height: most embeds need <code>height</code> set explicitly. Video Studio wants at least
+                <code>1200px</code>, the image tools (BG Remover / Depth) are happy at <code>720px</code>, Brand Kit and Source
+                Library scale with content so pick <code>900px+</code>.
+            </li>
+        </ul>
+    </section>
+
+    <section class="space-y-6">
+        {
+            embeds.map((e) => {
+                const defaultHeight =
+                    e.slug === 'video-studio' ? 1200 : e.slug === 'scene' ? 820 : e.slug === 'brand-kit' ? 1000 : 720;
+                const snippet = `<iframe
+    src="${origin}${e.embedHref}"
+    style="width:100%;height:${defaultHeight}px;border:0;border-radius:16px;background:#0b0b0b;"
+    loading="lazy"
+    allow="clipboard-read; clipboard-write; camera; microphone; fullscreen"
+    referrerpolicy="no-referrer-when-downgrade"
+    title="contentmint · ${e.name}"
+></iframe>`;
+                return (
+                    <div class="rounded-xl border border-white/10 bg-black/40 p-5 space-y-3">
+                        <div class="flex items-center justify-between gap-3 flex-wrap">
+                            <div>
+                                <div
+                                    class="text-xs uppercase tracking-widest"
+                                    style={`color: ${e.accent};`}
+                                >
+                                    {e.slug}
+                                </div>
+                                <h3 class="text-lg font-semibold">{e.name}</h3>
+                                <p class="text-xs opacity-70">{e.tagline}</p>
+                            </div>
+                            <div class="flex gap-2">
+                                <a
+                                    href={e.embedHref}
+                                    class="cm-btn cm-btn--ghost"
+                                    target="_blank"
+                                    rel="noopener"
+                                >
+                                    Preview embed
+                                </a>
+                                <button class="cm-btn" data-copy-snippet={snippet}>
+                                    Copy iframe
+                                </button>
+                            </div>
+                        </div>
+                        <pre class="rounded-lg bg-black/60 border border-white/10 p-3 text-xs overflow-x-auto"><code>{snippet}</code></pre>
+                    </div>
+                );
+            })
+        }
+    </section>
+
+    <a href="/tools" class="cm-btn cm-btn--ghost mt-6 inline-flex">← Back to tools</a>
+
+    <style>
+        .cm-mint {
+            background: linear-gradient(90deg, #7b2bff 0%, #a855f7 100%);
+            -webkit-background-clip: text;
+            background-clip: text;
+            color: transparent;
+        }
+    </style>
+
+    <script>
+        document.querySelectorAll<HTMLButtonElement>('[data-copy-snippet]').forEach((btn) => {
+            btn.addEventListener('click', async () => {
+                const snippet = btn.dataset.copySnippet!;
+                try {
+                    await navigator.clipboard.writeText(snippet);
+                    const original = btn.textContent;
+                    btn.textContent = 'Copied!';
+                    setTimeout(() => {
+                        btn.textContent = original;
+                    }, 1400);
+                } catch {
+                    alert('Clipboard blocked — select the snippet manually.');
+                }
+            });
+        });
+    </script>
+</Layout>

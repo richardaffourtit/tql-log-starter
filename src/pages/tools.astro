@@ -1,6 +1,6 @@
 ---
 import Layout from '../layouts/Layout.astro';
-import Studio from '../components/studio/Studio.tsx';
+import { TOOLS } from '../lib/tools';
 ---
 
 <Layout title="contentmint — by g00dweird">
@@ -11,10 +11,32 @@ import Studio from '../components/studio/Studio.tsx';
         <span class="opacity-70 text-sm">by g00dweird</span>
     </div>
     <p class="mb-8 text-lg opacity-80">
-        Turn a track plus a score (MIDI, MusicXML, or GuitarPro) into a 9:16 video. Staff/tab, spectrum,
-        waveform, wordmark, and tile-mosh — arranged on the canvas and exported to WebM.
+        A suite of browser-based tools for creating 9:16 vertical music content videos. Pick a tool.
     </p>
-    <Studio client:only="react" />
+    <ul class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {
+            TOOLS.map((t) => (
+                <li class="rounded-xl border border-white/10 bg-white/5 p-5 space-y-2 hover:bg-white/10 transition-colors">
+                    <div class="flex items-start justify-between gap-2">
+                        <a href={t.href} class="text-xl font-semibold hover:underline">
+                            {t.name}
+                        </a>
+                        <span
+                            class="text-[10px] uppercase tracking-widest px-2 py-0.5 rounded-md"
+                            style={`background: ${t.accent}33; color: ${t.accent}; border: 1px solid ${t.accent}66;`}
+                        >
+                            {t.status}
+                        </span>
+                    </div>
+                    <div class="text-sm opacity-80">{t.tagline}</div>
+                    <p class="text-xs opacity-70 leading-relaxed">{t.description}</p>
+                    <a href={t.href} class="inline-block text-xs mt-1 opacity-80 hover:opacity-100">
+                        Open →
+                    </a>
+                </li>
+            ))
+        }
+    </ul>
     <style>
         .cm-mint {
             background: linear-gradient(90deg, #7b2bff 0%, #a855f7 100%);

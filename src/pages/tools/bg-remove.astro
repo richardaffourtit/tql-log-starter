@@ -1,0 +1,115 @@
+---
+import Layout from '../../layouts/Layout.astro';
+import { TOOLS } from '../../lib/tools';
+
+const tool = TOOLS.find((t) => t.slug === 'bg-remove')!;
+---
+
+<Layout title={`${tool.name} · contentmint`}>
+    <div class="flex items-end justify-between flex-wrap gap-4 mb-2">
+        <h1 class="tracking-tight text-4xl sm:text-5xl font-extrabold">
+            <span class="text-white">content</span><span class="cm-mint">mint</span>
+            <span class="opacity-60 font-normal text-2xl sm:text-3xl ml-3">/ {tool.name}</span>
+        </h1>
+        <span
+            class="text-xs uppercase tracking-widest px-2 py-1 rounded-md"
+            style={`background: ${tool.accent}33; color: ${tool.accent}; border: 1px solid ${tool.accent}66;`}
+            >{tool.status}</span
+        >
+    </div>
+    <p class="mb-8 text-lg opacity-80">{tool.tagline}</p>
+
+    <section class="rounded-xl p-6 bg-white/5 border border-white/10 space-y-4 mb-6">
+        <p class="opacity-80 leading-relaxed">{tool.description}</p>
+        <p class="text-xs opacity-60">
+            First run downloads the MODNet ONNX model (~25MB) — subsequent runs are instant. Runs
+            fully in the browser via <code>@xenova/transformers</code>. Video mode (per-frame cutout)
+            ships in the next pass.
+        </p>
+    </section>
+
+    <section class="rounded-xl p-6 bg-black/40 border border-white/10 space-y-4">
+        <input id="bg-file" type="file" accept="image/*" class="cm-input" />
+        <button id="bg-run" class="cm-btn" disabled>Run background removal</button>
+        <div id="bg-status" class="text-sm opacity-70"></div>
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+                <div class="text-xs opacity-60 mb-1">Input</div>
+                <canvas id="bg-input" class="w-full rounded-lg bg-white/5"></canvas>
+            </div>
+            <div>
+                <div class="text-xs opacity-60 mb-1">Cutout (transparent)</div>
+                <canvas
+                    id="bg-output"
+                    class="w-full rounded-lg"
+                    style="background-image: linear-gradient(45deg, rgba(255,255,255,0.08) 25%, transparent 25%, transparent 75%, rgba(255,255,255,0.08) 75%), linear-gradient(45deg, rgba(255,255,255,0.08) 25%, transparent 25%, transparent 75%, rgba(255,255,255,0.08) 75%); background-size: 20px 20px; background-position: 0 0, 10px 10px;"
+                ></canvas>
+            </div>
+        </div>
+        <a id="bg-download" class="cm-btn cm-btn--ghost hidden" download="cutout.png">
+            Download cutout PNG
+        </a>
+    </section>
+
+    <a href="/tools" class="cm-btn cm-btn--ghost mt-6 inline-flex">← Back to tools</a>
+
+    <style>
+        .cm-mint {
+            background: linear-gradient(90deg, #7b2bff 0%, #a855f7 100%);
+            -webkit-background-clip: text;
+            background-clip: text;
+            color: transparent;
+        }
+        .cm-input {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            border-radius: 8px;
+            padding: 0.5rem 0.75rem;
+            color: white;
+        }
+    </style>
+
+    <script>
+        import { removeBackground } from '../../lib/visionPipelines';
+
+        let img: HTMLImageElement | null = null;
+        const fileInput = document.getElementById('bg-file') as HTMLInputElement;
+        const runBtn = document.getElementById('bg-run') as HTMLButtonElement;
+        const status = document.getElementById('bg-status')!;
+        const inputCanvas = document.getElementById('bg-input') as HTMLCanvasElement;
+        const outputCanvas = document.getElementById('bg-output') as HTMLCanvasElement;
+        const download = document.getElementById('bg-download') as HTMLAnchorElement;
+
+        fileInput.addEventListener('change', async () => {
+            const f = fileInput.files?.[0];
+            if (!f) return;
+            img = new Image();
+            img.src = URL.createObjectURL(f);
+            await img.decode();
+            inputCanvas.width = img.width;
+            inputCanvas.height = img.height;
+            inputCanvas.getContext('2d')!.drawImage(img, 0, 0);
+            runBtn.disabled = false;
+            status.textContent = `Loaded ${img.width}x${img.height}. Click Run.`;
+        });
+
+        runBtn.addEventListener('click', async () => {
+            if (!img) return;
+            runBtn.disabled = true;
+            status.textContent = 'Loading model & running segmentation…';
+            try {
+                const { cutout } = await removeBackground(img);
+                outputCanvas.width = cutout.width;
+                outputCanvas.height = cutout.height;
+                outputCanvas.getContext('2d')!.drawImage(cutout, 0, 0);
+                download.href = outputCanvas.toDataURL('image/png');
+                download.classList.remove('hidden');
+                status.textContent = `Done (${cutout.width}x${cutout.height}).`;
+            } catch (err) {
+                status.textContent = `Error: ${(err as Error).message}`;
+            } finally {
+                runBtn.disabled = false;
+            }
+        });
+    </script>
+</Layout>

@@ -78,7 +78,67 @@ export const TOOLS: ToolMeta[] = [
         status: 'beta',
         href: '/tools/sources',
         accent: '#3ab3ff'
+    },
+    {
+        slug: 'bg-remove',
+        name: 'BG Remover',
+        tagline: 'Alpha matte from image or video frame',
+        description:
+            'Drop an image or paste a video frame — transformers.js runs MODNet / RMBG in the browser to produce a clean alpha cutout. Export PNG with transparency or feed the matte into the Scene compositor.',
+        status: 'beta',
+        href: '/tools/bg-remove',
+        accent: '#ff7ab6'
+    },
+    {
+        slug: 'depth',
+        name: 'Depth Mask',
+        tagline: 'Per-pixel depth map + depth-aware effects',
+        description:
+            'Runs Depth-Anything in-browser. Returns a normalized depth map you can use as a mask for fog, DOF, parallax, or as a displacement source in Scene.',
+        status: 'beta',
+        href: '/tools/depth',
+        accent: '#c0ff3a'
+    },
+    {
+        slug: 'scene',
+        name: 'Scene Compositor',
+        tagline: '3D anchor + projection-map with homography',
+        description:
+            'Click four corners of a flat surface in your footage (ground, wall, guitar body) and contentmint solves the homography. Warp the piano roll, lyric caption, or a Midjourney image onto that surface — or anchor a 3D model / gaussian splat to it with matching perspective.',
+        status: 'stub',
+        href: '/tools/scene',
+        accent: '#ff9a00'
+    },
+    {
+        slug: 'figma-import',
+        name: 'Figma Import',
+        tagline: 'Pull palette + type + frames into Brand Kit',
+        description:
+            'Paste a Figma file URL + personal access token. contentmint reads the file, extracts color styles, text styles, and top-level frame thumbnails, and pushes them into your Brand Kit so every tool speaks the same design language.',
+        status: 'beta',
+        href: '/tools/figma-import',
+        accent: '#f24e1e'
+    },
+    {
+        slug: 'embed-guide',
+        name: 'Embed Guide',
+        tagline: 'Iframe snippets for Framer / any site',
+        description:
+            'Every tool has an embeddable `/embed/<slug>` route with no chrome and a transparent background. Copy the iframe snippet here into a Framer page (or any site) to run contentmint right inside your layout.',
+        status: 'live',
+        href: '/tools/embed-guide',
+        accent: '#0095ff'
     }
+];
+
+export const EMBED_TOOLS: string[] = [
+    'video-studio',
+    'brand-kit',
+    'sources',
+    'bg-remove',
+    'depth',
+    'scene',
+    'figma-import'
 ];
 
 export const EXPORT_MODES = [
