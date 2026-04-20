@@ -78,6 +78,36 @@ export const TOOLS: ToolMeta[] = [
         status: 'beta',
         href: '/tools/sources',
         accent: '#3ab3ff'
+    },
+    {
+        slug: 'bg-remove',
+        name: 'BG Remover',
+        tagline: 'Alpha matte from image or video frame',
+        description:
+            'Drop an image or paste a video frame — transformers.js runs MODNet / RMBG in the browser to produce a clean alpha cutout. Export PNG with transparency or feed the matte into the Scene compositor.',
+        status: 'beta',
+        href: '/tools/bg-remove',
+        accent: '#ff7ab6'
+    },
+    {
+        slug: 'depth',
+        name: 'Depth Mask',
+        tagline: 'Per-pixel depth map + depth-aware effects',
+        description:
+            'Runs Depth-Anything in-browser. Returns a normalized depth map you can use as a mask for fog, DOF, parallax, or as a displacement source in Scene.',
+        status: 'beta',
+        href: '/tools/depth',
+        accent: '#c0ff3a'
+    },
+    {
+        slug: 'scene',
+        name: 'Scene Compositor',
+        tagline: '3D anchor + projection-map with homography',
+        description:
+            'Click four corners of a flat surface in your footage (ground, wall, guitar body) and contentmint solves the homography. Warp the piano roll, lyric caption, or a Midjourney image onto that surface — or anchor a 3D model / gaussian splat to it with matching perspective.',
+        status: 'stub',
+        href: '/tools/scene',
+        accent: '#ff9a00'
     }
 ];
 
