@@ -58,6 +58,26 @@ export const TOOLS: ToolMeta[] = [
         status: 'stub',
         href: '/tools/lyrics',
         accent: '#ffd166'
+    },
+    {
+        slug: 'brand-kit',
+        name: 'Brand Kit',
+        tagline: 'Assets + copy + links, one deploy-ready kit',
+        description:
+            'One home for images, GIFs, videos, header clips, fonts, bio, taglines, lyric snippets, credits, and link lists. Tag by platform, copy-to-clipboard, and drop straight into any contentmint tool or export a shareable JSON kit.',
+        status: 'beta',
+        href: '/tools/brand-kit',
+        accent: '#a855f7'
+    },
+    {
+        slug: 'sources',
+        name: 'Source Library',
+        tagline: 'Archive.org + Pexels + Pixabay + your saves',
+        description:
+            'Paste an archive.org URL for long-form clips, search Pexels and Pixabay portrait video, and pin anything to your personal library. Sources flow straight into the Video Studio autocut pipeline.',
+        status: 'beta',
+        href: '/tools/sources',
+        accent: '#3ab3ff'
     }
 ];
 

@@ -371,3 +371,37 @@ export function applyTileMosh(ctx: CanvasRenderingContext2D, strength: number, t
     ctx.drawImage(off, -6 * s, 0);
     ctx.restore();
 }
+
+export interface CutMarkerOpts {
+    markers: number[];
+    y0: number;
+    h: number;
+    time: number;
+    window: number;
+    color?: string;
+    activeColor?: string;
+}
+
+export function drawCutMarkers(rc: RenderCtx, opts: CutMarkerOpts) {
+    const { ctx } = rc;
+    const { markers, y0, h, time, window, color = '#ffffff', activeColor = '#00e0c0' } = opts;
+    if (!markers.length) return;
+    const halfWin = window / 2;
+    ctx.save();
+    ctx.lineWidth = 2;
+    for (const t of markers) {
+        const dt = t - time;
+        if (dt < -halfWin || dt > halfWin) continue;
+        const x = CANVAS_W / 2 + (dt / halfWin) * (CANVAS_W / 2);
+        const active = Math.abs(dt) < 0.08;
+        ctx.strokeStyle = active ? activeColor : color;
+        ctx.globalAlpha = active ? 1 : 0.55;
+        ctx.beginPath();
+        ctx.moveTo(x, y0);
+        ctx.lineTo(x, y0 + h);
+        ctx.stroke();
+        ctx.fillStyle = ctx.strokeStyle;
+        ctx.fillRect(x - 3, y0 - 6, 6, 6);
+    }
+    ctx.restore();
+}
