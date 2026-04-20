@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useAudio } from './useAudio';
 import { useScore } from './useScore';
+import { useStems, type StemRole } from './useStems';
 import {
     CANVAS_H,
     CANVAS_W,
@@ -13,10 +14,12 @@ import {
     drawReadout,
     drawScoreStrip,
     drawSpectrum,
+    drawStemLanes,
     drawTitle,
     drawWaveform,
     drawWordmark
 } from './modules';
+import type { StemLane } from './modules';
 import type { RenderCtx } from './modules';
 import { detectSoundStart, makeCueId, type Cue } from './cues';
 import { activeReadout } from './theory';
@@ -70,6 +73,9 @@ interface Layout {
     showReadout: boolean;
     readoutY: number;
     readoutSize: number;
+    showStemLanes: boolean;
+    stemLanesY: number;
+    stemLanesH: number;
 }
 
 const DEFAULT_LAYOUT: Layout = {
@@ -106,12 +112,17 @@ const DEFAULT_LAYOUT: Layout = {
     colorizePianoRoll: true,
     showReadout: true,
     readoutY: 1180,
-    readoutSize: 120
+    readoutSize: 120,
+    showStemLanes: false,
+    stemLanesY: 960,
+    stemLanesH: 420
 };
 
 export default function Studio() {
     const audio = useAudio();
     const score = useScore();
+    const stems = useStems();
+    const stemFreqRef = useRef<Map<string, Uint8Array>>(new Map());
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const rafRef = useRef<number>(0);
     const freqArrRef = useRef<Uint8Array | null>(null);
@@ -177,6 +188,35 @@ export default function Studio() {
             setLayout((s) => ({ ...s, audioBpm: score.state.detectedBpm }));
         }
     }, [score.state.detectedBpm, score.state.kind]);
+
+    useEffect(() => {
+        if (!audio.context) return;
+        const targets: AudioNode[] = [audio.context.destination];
+        if (audio.destination) targets.push(audio.destination);
+        stems.attachContext(audio.context, targets);
+    }, [audio.context, audio.destination, stems]);
+
+    const lastStemSeekRef = useRef(0);
+    useEffect(() => {
+        if (!stems.state.tracks.length) return;
+        if (audio.state.playing) {
+            stems.start(audio.state.currentTime);
+            lastStemSeekRef.current = audio.state.currentTime;
+        } else {
+            stems.stop();
+        }
+    }, [audio.state.playing, stems.state.tracks.length]);
+
+    useEffect(() => {
+        if (!stems.state.tracks.length || !audio.state.playing) return;
+        const drift = Math.abs(audio.state.currentTime - lastStemSeekRef.current);
+        if (drift > 0.4) {
+            stems.start(audio.state.currentTime);
+            lastStemSeekRef.current = audio.state.currentTime;
+        } else {
+            lastStemSeekRef.current = audio.state.currentTime;
+        }
+    }, [audio.state.currentTime]);
 
     useEffect(() => {
         const canvas = canvasRef.current;
@@ -300,6 +340,25 @@ export default function Studio() {
                 drawWaveform(rc, layout.spectrumY + layout.spectrumH / 2 - 80, 160, layout.waveformColor);
             }
 
+            if (layout.showStemLanes && stems.state.tracks.length) {
+                const lanes: StemLane[] = stems.state.tracks.map((t) => {
+                    const a = stems.analysers.get(t.id);
+                    if (!a) return { label: t.name, color: t.color, freq: null };
+                    let buf = stemFreqRef.current.get(t.id);
+                    if (!buf || buf.length !== a.frequencyBinCount) {
+                        buf = new Uint8Array(new ArrayBuffer(a.frequencyBinCount));
+                        stemFreqRef.current.set(t.id, buf);
+                    }
+                    a.getByteFrequencyData(buf as Uint8Array<ArrayBuffer>);
+                    return { label: t.name, color: t.color, freq: buf };
+                });
+                drawStemLanes(rc, {
+                    lanes,
+                    y0: layout.stemLanesY,
+                    h: layout.stemLanesH
+                });
+            }
+
             if (layout.glitch > 0) {
                 applyGlitch(ctx, layout.glitch, audio.state.currentTime);
             }
@@ -311,7 +370,7 @@ export default function Studio() {
         };
         rafRef.current = requestAnimationFrame(tick);
         return () => cancelAnimationFrame(rafRef.current);
-    }, [layout, audio.analyser, score.scoreImage, score.scoreImageSize, score.state.notes, score.state.kind, score.state.detectedBpm, audio.state.currentTime, recordTime, cutMarkers, showCutMarkers]);
+    }, [layout, audio.analyser, score.scoreImage, score.scoreImageSize, score.state.notes, score.state.kind, score.state.detectedBpm, audio.state.currentTime, recordTime, cutMarkers, showCutMarkers, stems.state.tracks, stems.analysers]);
 
     const handleTap = () => {
         const now = performance.now();
@@ -1206,6 +1265,119 @@ export default function Studio() {
                     </p>
                 </Panel>
 
+                <Panel title="3g. Stems (multi-file)">
+                    <p className="text-xs opacity-70">
+                        Drop multiple bounced stems (Ableton exports, drums / bass / vocals / keys,
+                        etc.). They play in lockstep with the master audio — each gets its own
+                        analyser, color, and visualizer lane.
+                    </p>
+                    <MultiFileInput
+                        accept="audio/*"
+                        onFiles={(fs) => void stems.loadFiles(fs)}
+                        label={
+                            stems.state.tracks.length
+                                ? `${stems.state.tracks.length} stem(s) loaded — add more`
+                                : 'Choose stem audio files'
+                        }
+                    />
+                    {stems.state.tracks.length > 0 && (
+                        <ul className="space-y-1.5">
+                            {stems.state.tracks.map((t) => (
+                                <li
+                                    key={t.id}
+                                    className="flex items-center gap-2 bg-white/5 rounded-md p-2"
+                                >
+                                    <span
+                                        className="inline-block w-2.5 h-2.5 rounded-full shrink-0"
+                                        style={{ background: t.color }}
+                                    />
+                                    <input
+                                        className="inp"
+                                        style={{ width: 160 }}
+                                        value={t.name}
+                                        onChange={(e) => stems.rename(t.id, e.target.value)}
+                                    />
+                                    <select
+                                        className="inp"
+                                        style={{ width: 110 }}
+                                        value={t.role}
+                                        onChange={(e) =>
+                                            stems.setRole(t.id, e.target.value as StemRole)
+                                        }
+                                    >
+                                        {['drums', 'bass', 'vocals', 'keys', 'guitar', 'synth', 'fx', 'other'].map(
+                                            (r) => (
+                                                <option key={r} value={r}>
+                                                    {r}
+                                                </option>
+                                            )
+                                        )}
+                                    </select>
+                                    <input
+                                        type="range"
+                                        min={0}
+                                        max={1.5}
+                                        step={0.01}
+                                        value={t.gain}
+                                        onChange={(e) => stems.setGain(t.id, parseFloat(e.target.value))}
+                                        className="flex-1"
+                                    />
+                                    <button
+                                        className="btn"
+                                        onClick={() => stems.toggleMute(t.id)}
+                                        style={{
+                                            background: t.muted ? 'rgba(228,108,160,0.3)' : undefined
+                                        }}
+                                    >
+                                        M
+                                    </button>
+                                    <button
+                                        className="btn"
+                                        onClick={() => stems.toggleSolo(t.id)}
+                                        style={{
+                                            background: t.solo ? 'rgba(143,201,160,0.3)' : undefined
+                                        }}
+                                    >
+                                        S
+                                    </button>
+                                    <button className="btn" onClick={() => stems.remove(t.id)}>
+                                        ×
+                                    </button>
+                                </li>
+                            ))}
+                        </ul>
+                    )}
+                    <Toggle
+                        label="Show stem lanes on canvas"
+                        checked={layout.showStemLanes}
+                        onChange={(v) => update('showStemLanes', v)}
+                    />
+                    <Row>
+                        <Field label={`Lanes Y (${layout.stemLanesY})`}>
+                            <input
+                                type="range"
+                                min={0}
+                                max={CANVAS_H - 200}
+                                value={layout.stemLanesY}
+                                onChange={(e) => update('stemLanesY', parseInt(e.target.value))}
+                            />
+                        </Field>
+                        <Field label={`Lanes H (${layout.stemLanesH})`}>
+                            <input
+                                type="range"
+                                min={120}
+                                max={900}
+                                value={layout.stemLanesH}
+                                onChange={(e) => update('stemLanesH', parseInt(e.target.value))}
+                            />
+                        </Field>
+                    </Row>
+                    <p className="text-xs opacity-60">
+                        Stems retrigger on seek (drift &gt; 0.4s). Mute / solo like a DAW — solo on any
+                        stem mutes the rest automatically.
+                    </p>
+                </Panel>
+
                 <Panel title="4. Score strip">
                     <Toggle
                         label="Show notation strip"
@@ -1428,6 +1600,38 @@ function Toggle({
             <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} />
             {label}
         </label>
+    );
+}
+
+function MultiFileInput({
+    accept,
+    onFiles,
+    label
+}: {
+    accept: string;
+    onFiles: (fs: File[]) => void;
+    label: string;
+}) {
+    const ref = useRef<HTMLInputElement>(null);
+    return (
+        <div className="flex gap-2 items-center">
+            <button className="btn" onClick={() => ref.current?.click()}>
+                Browse
+            </button>
+            <span className="text-sm opacity-75 truncate">{label}</span>
+            <input
+                ref={ref}
+                type="file"
+                accept={accept}
+                multiple
+                className="hidden"
+                onChange={(e) => {
+                    const fs = Array.from(e.target.files ?? []);
+                    if (fs.length) onFiles(fs);
+                    e.target.value = '';
+                }}
+            />
+        </div>
     );
 }
 

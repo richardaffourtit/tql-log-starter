@@ -14,6 +14,7 @@ export interface UseAudio {
     audioEl: HTMLAudioElement | null;
     analyser: AnalyserNode | null;
     destination: MediaStreamAudioDestinationNode | null;
+    context: AudioContext | null;
     load: (file: File) => void;
     play: () => void;
     pause: () => void;
@@ -123,6 +124,7 @@ export function useAudio(fftSize = 2048): UseAudio {
         audioEl: audioElRef.current,
         analyser: analyserRef.current,
         destination: destRef.current,
+        context: ctxRef.current,
         load,
         play,
         pause,
